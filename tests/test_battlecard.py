@@ -2656,3 +2656,81 @@ def test_the_teach_page_offers_our_own_products(client):
     body = client.get('/intel').data.decode()
     assert '<option value="Impact Analytics">' in body
     assert 'Who is this about' in body
+
+
+# ── riding out a busy API ───────────────────────────────────────────────────
+
+def _overloaded_mid_stream():
+    """The error the SDK raises when an overload arrives inside a running stream."""
+    import anthropic
+    import httpx2 as httpx
+    response = httpx.Response(200, request=httpx.Request('POST', 'https://api.anthropic.com'))
+    body = {'type': 'error', 'error': {'details': None, 'type': 'overloaded_error',
+                                       'message': 'Overloaded'}, 'request_id': 'req_x'}
+    return anthropic.APIStatusError(str(body), response=response, body=body)
+
+
+def test_an_overload_mid_stream_counts_as_transient():
+    from battlecards import ai
+    assert ai.is_transient(_overloaded_mid_stream())
+    assert not ai.is_transient(ValueError('bad JSON'))
+
+
+def test_an_overload_reads_as_a_sentence_not_a_payload():
+    from battlecards import ai
+    message = ai.friendly_error(_overloaded_mid_stream())
+    assert 'overloaded' in message and 'APIStatusError' not in message
+    assert "{'type'" not in message
+
+
+def test_a_transient_failure_is_retried_then_succeeds(monkeypatch):
+    from battlecards import ai
+    monkeypatch.setattr(ai, 'TRANSIENT_WAITS', (0, 0, 0))
+    monkeypatch.setattr(ai.time, 'sleep', lambda seconds: None)
+    calls = []
+
+    class Stream:
+        def __enter__(self):
+            calls.append(1)
+            if len(calls) < 3:
+                raise _overloaded_mid_stream()
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return 'done'
+
+    class Client:
+        class messages:
+            @staticmethod
+            def stream(**request):
+                return Stream()
+
+    assert ai._final_message(Client(), model='m') == 'done'
+    assert len(calls) == 3
+
+
+def test_a_real_error_is_not_retried(monkeypatch):
+    from battlecards import ai
+    monkeypatch.setattr(ai.time, 'sleep', lambda seconds: None)
+    calls = []
+
+    class Stream:
+        def __enter__(self):
+            calls.append(1)
+            raise ValueError('not transient')
+
+        def __exit__(self, *exc):
+            return False
+
+    class Client:
+        class messages:
+            @staticmethod
+            def stream(**request):
+                return Stream()
+
+    with pytest.raises(ValueError):
+        ai._final_message(Client(), model='m')
+    assert len(calls) == 1

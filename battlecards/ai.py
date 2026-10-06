@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import time
 
 from . import attributesmart, docs, intel, library
 from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
@@ -126,10 +127,81 @@ def _client():
     except ImportError as exc:  # pragma: no cover - dependency is in requirements
         raise AIUnavailable('The anthropic package is not installed.') from exc
     try:
-        return anthropic.Anthropic()
+        # More retries than the default two: an overloaded API usually clears
+        # within a minute, and a card that waits beats a card that fails.
+        return anthropic.Anthropic(max_retries=4)
     except Exception as exc:
         raise AIUnavailable(
             'No Anthropic credential found. Set ANTHROPIC_API_KEY.') from exc
+
+
+# ─── Riding out a busy API ──────────────────────────────────────────────────────
+# The SDK retries an overloaded or failing request before the response starts.
+# Once a stream is running, an overload arrives as an error event part way
+# through, and the SDK raises it without retrying. Every call here goes through
+# these helpers so a busy minute on Anthropic's side costs a short wait rather
+# than the whole card.
+
+TRANSIENT_WAITS = (8, 20, 45)     # seconds before each retry, three retries
+_TRANSIENT_KINDS = {'overloaded_error', 'api_error', 'rate_limit_error'}
+
+
+def _error_kind(exc) -> str:
+    body = getattr(exc, 'body', None)
+    if isinstance(body, dict):
+        error = body.get('error')
+        if isinstance(error, dict):
+            return error.get('type') or ''
+        return body.get('type') or ''
+    return ''
+
+
+def is_transient(exc) -> bool:
+    """True for failures worth waiting out: overload, rate limit, server error."""
+    try:
+        import anthropic
+    except ImportError:  # pragma: no cover
+        return False
+    if isinstance(exc, (anthropic.OverloadedError, anthropic.RateLimitError,
+                        anthropic.InternalServerError, anthropic.ServiceUnavailableError,
+                        anthropic.APIConnectionError)):
+        return True
+    if isinstance(exc, anthropic.APIStatusError):
+        return (_error_kind(exc) in _TRANSIENT_KINDS
+                or getattr(exc, 'status_code', 0) in (429, 500, 502, 503, 504, 529))
+    return False
+
+
+def friendly_error(exc) -> str:
+    """A sentence a seller can act on, in place of the raw API payload."""
+    kind = _error_kind(exc)
+    status = getattr(exc, 'status_code', 0)
+    if kind == 'overloaded_error' or status == 529:
+        return ('Anthropic\'s servers are overloaded right now. This is on their side, '
+                'not a problem with your card or your key, and nothing was charged '
+                'for the part that failed. The builder already waited and retried; '
+                'try again in a few minutes.')
+    if kind == 'rate_limit_error' or status == 429:
+        return ('The Anthropic account hit its rate limit. Wait a minute and try '
+                'again, or raise the limit in the Anthropic Console.')
+    if is_transient(exc):
+        return ('Anthropic\'s API had a temporary problem and did not recover after '
+                'several retries. Try again in a few minutes.')
+    return '%s: %s' % (type(exc).__name__, exc)
+
+
+def _final_message(client, **request):
+    """Stream a request to its final message, waiting out transient failures."""
+    for attempt, wait in enumerate(TRANSIENT_WAITS + (None,)):
+        try:
+            with client.messages.stream(**request) as stream:
+                return stream.get_final_message()
+        except Exception as exc:
+            if wait is None or not is_transient(exc):
+                raise
+            log.warning('Anthropic call failed (%s), retry %d in %ds',
+                        _error_kind(exc) or type(exc).__name__, attempt + 1, wait)
+            time.sleep(wait)
 
 
 # ─── Ground truth handed to the model ───────────────────────────────────────────
@@ -411,7 +483,8 @@ def _research(client, competitor: str, product: str, notes: str,
     """
     mode = mode or STANDARD
     ask = _research_prompt(competitor, product, notes)
-    with client.messages.stream(
+    message = _final_message(
+        client,
         model=MODEL,
         max_tokens=mode['max_tokens'],
         system=_system_prompt(product, competitor),
@@ -419,8 +492,7 @@ def _research(client, competitor: str, product: str, notes: str,
         output_config={'effort': mode['effort']},
         tools=[_search_tool(mode['searches'])],
         messages=[{'role': 'user', 'content': ask}],
-    ) as stream:
-        message = stream.get_final_message()
+    )
 
     if message.stop_reason == 'refusal':
         raise RuntimeError('The research request was declined: %s'
@@ -477,15 +549,15 @@ def _structure(client, competitor: str, product: str, preset: dict,
     if curated:
         system.append({'type': 'text', 'text': curated})
 
-    with client.messages.stream(
+    message = _final_message(
+        client,
         model=MODEL,
         max_tokens=mode['max_tokens'],
         system=system,
         thinking={'type': 'adaptive'},
         output_config={'effort': mode['effort']},
         messages=messages,
-    ) as stream:
-        message = stream.get_final_message()
+    )
 
     if cost is not None:
         add_cost(cost, message.usage)
@@ -521,14 +593,14 @@ def _retry_structure(client, messages: list, bad: str, mode: dict,
                                     'again as one raw JSON object. Start with { and '
                                     'end with }. No fence, no explanation.'},
     ]
-    with client.messages.stream(
+    message = _final_message(
+        client,
         model=MODEL,
         max_tokens=mode['max_tokens'],
         thinking={'type': 'adaptive'},
         output_config={'effort': 'low'},
         messages=followup,
-    ) as stream:
-        message = stream.get_final_message()
+    )
     if cost is not None:
         add_cost(cost, message.usage)
     text = ''.join(block.text for block in message.content if block.type == 'text')
@@ -706,21 +778,38 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
                'curated': bool(curated_for(competitor, product))}
         yield {'type': 'status', 'step': 'research',
                'message': 'Searching the public record for %s' % competitor}
-        chunks = []
-        with client.messages.stream(
-            model=MODEL,
-            max_tokens=mode['max_tokens'],
-            system=_system_prompt(product, competitor),
-            thinking={'type': 'adaptive'},
-            output_config={'effort': mode['effort']},
-            tools=[_search_tool(mode['searches'])],
-            messages=[{'role': 'user',
-                       'content': _research_prompt(competitor, product, notes)}],
-        ) as stream:
-            for chunk in stream.text_stream:
-                chunks.append(chunk)
-                yield {'type': 'research', 'text': chunk}
-            message = stream.get_final_message()
+        # Streamed so the seller watches the brief arrive. If Anthropic is
+        # overloaded part way through, the half brief is dropped and the phase
+        # starts again after a wait, so the card never rests on a fragment.
+        for attempt, wait in enumerate(TRANSIENT_WAITS + (None,)):
+            chunks = []
+            try:
+                with client.messages.stream(
+                    model=MODEL,
+                    max_tokens=mode['max_tokens'],
+                    system=_system_prompt(product, competitor),
+                    thinking={'type': 'adaptive'},
+                    output_config={'effort': mode['effort']},
+                    tools=[_search_tool(mode['searches'])],
+                    messages=[{'role': 'user',
+                               'content': _research_prompt(competitor, product, notes)}],
+                ) as stream:
+                    for chunk in stream.text_stream:
+                        chunks.append(chunk)
+                        yield {'type': 'research', 'text': chunk}
+                    message = stream.get_final_message()
+                break
+            except Exception as exc:
+                if wait is None or not is_transient(exc):
+                    raise
+                log.warning('research stream failed (%s), retry %d in %ds',
+                            _error_kind(exc) or type(exc).__name__, attempt + 1, wait)
+                yield {'type': 'retry', 'wait': wait, 'attempt': attempt + 2,
+                       'of': len(TRANSIENT_WAITS) + 1,
+                       'message': 'Anthropic is busy right now. Starting the research '
+                                  'again in %d seconds (attempt %d of %d).'
+                                  % (wait, attempt + 2, len(TRANSIENT_WAITS) + 1)}
+                time.sleep(wait)
         add_cost(cost, message.usage)
         yield {'type': 'usage', 'cost': dict(cost), 'phase': 'research'}
         if message.stop_reason == 'refusal':
@@ -763,7 +852,7 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         yield {'type': 'error', 'message': str(exc)}
     except Exception as exc:  # surfaced to the UI rather than a blank failure
         log.exception('battlecard generation failed')
-        yield {'type': 'error', 'message': '%s: %s' % (type(exc).__name__, exc)}
+        yield {'type': 'error', 'message': friendly_error(exc)}
 
 
 # ─── Chat assistant ─────────────────────────────────────────────────────────────
@@ -829,16 +918,27 @@ def chat_stream(history: list, card: dict = None, product: str = ''):
                        'text': 'The card currently open, as JSON:\n%s'
                                % json.dumps(_card_digest(card), indent=1)})
 
-    with client.messages.stream(
-        model=MODEL,
-        max_tokens=CHAT_MAX_TOKENS,
-        system=system,
-        thinking={'type': 'adaptive'},
-        output_config={'effort': 'medium'},
-        messages=messages,
-    ) as stream:
-        for chunk in stream.text_stream:
-            yield chunk
+    # A retry is only safe before the first word reaches the reader. After that,
+    # starting over would print the answer twice.
+    for attempt, wait in enumerate(TRANSIENT_WAITS + (None,)):
+        started = False
+        try:
+            with client.messages.stream(
+                model=MODEL,
+                max_tokens=CHAT_MAX_TOKENS,
+                system=system,
+                thinking={'type': 'adaptive'},
+                output_config={'effort': 'medium'},
+                messages=messages,
+            ) as stream:
+                for chunk in stream.text_stream:
+                    started = True
+                    yield chunk
+            return
+        except Exception as exc:
+            if started or wait is None or not is_transient(exc):
+                raise
+            time.sleep(wait)
 
 
 def _card_digest(card: dict) -> dict:
@@ -968,15 +1068,15 @@ def extract_intel(text: str, competitor: str, product: str = '',
     if intel.is_ia(competitor):
         system.append({'type': 'text', 'text': IA_TEACH_SYSTEM})
     cost = {}
-    with client.messages.stream(
+    message = _final_message(
+        client,
         model=MODEL,
         max_tokens=16000,
         system=system,
         thinking={'type': 'adaptive'},
         output_config={'effort': 'low'},
         messages=[{'role': 'user', 'content': ask}],
-    ) as stream:
-        message = stream.get_final_message()
+    )
 
     add_cost(cost, message.usage)
     if message.stop_reason == 'refusal':
@@ -1110,7 +1210,8 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
                'index': chunk['index'], 'total': chunk['total'],
                'message': 'Reading %s' % chunk['range']}
         try:
-            with client.messages.stream(
+            message = _final_message(
+                client,
                 model=MODEL,
                 max_tokens=12000,
                 system=system,
@@ -1118,12 +1219,12 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
                 output_config={'effort': 'low'},
                 messages=[{'role': 'user',
                            'content': _doc_ask(chunk, competitor, product)}],
-            ) as stream:
-                message = stream.get_final_message()
+            )
         except Exception as exc:
             log.exception('reading %s failed', chunk['range'])
             yield {'type': 'warning',
-                   'message': 'Could not read %s: %s' % (chunk['range'], exc)}
+                   'message': 'Could not read %s: %s' % (chunk['range'],
+                                                         friendly_error(exc))}
             continue
 
         add_cost(cost, message.usage)

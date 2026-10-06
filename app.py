@@ -1008,7 +1008,7 @@ def battlecard_chat():
         except Exception as exc:
             app.logger.exception('chat failed')
             yield 'data: %s\n\n' % json.dumps(
-                {'type': 'error', 'message': '%s: %s' % (type(exc).__name__, exc)})
+                {'type': 'error', 'message': battlecard_ai.friendly_error(exc)})
         yield 'data: %s\n\n' % json.dumps({'type': 'done'})
 
     return app.response_class(stream(), mimetype='text/event-stream',
@@ -1126,7 +1126,7 @@ def intel_extract():
         return jsonify({'error': str(exc)}), 400
     except Exception as exc:
         app.logger.exception('structuring a note failed')
-        return jsonify({'error': '%s: %s' % (type(exc).__name__, exc)}), 502
+        return jsonify({'error': battlecard_ai.friendly_error(exc)}), 502
     return jsonify(result)
 
 
@@ -1208,7 +1208,7 @@ def intel_upload():
         except Exception as exc:
             app.logger.exception('learning from a document failed')
             yield 'data: %s\n\n' % json.dumps(
-                {'type': 'error', 'message': '%s: %s' % (type(exc).__name__, exc)})
+                {'type': 'error', 'message': battlecard_ai.friendly_error(exc)})
 
     return app.response_class(stream(), mimetype='text/event-stream',
                               headers={'Cache-Control': 'no-cache',

@@ -402,6 +402,11 @@ function onEvent(ev) {
         track(ev.step === 'research'
             ? [['Searching the public record', 'now'], ['Writing the battlecard', 'wait']]
             : [['Searched the public record', 'done'], ['Writing the battlecard', 'now']]);
+    } else if (ev.type === 'retry') {
+        // Anthropic was overloaded part way through. The half brief is dropped
+        // and the research restarts, so the feed starts clean too.
+        research = '';
+        $('feed').textContent = ev.message;
     } else if (ev.type === 'research') {
         research += ev.text;
         $('feed').textContent = research.slice(-5000);
