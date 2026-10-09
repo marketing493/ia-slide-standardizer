@@ -275,12 +275,12 @@ def read(filename: str, data: bytes) -> dict:
             'segments': segments, 'chars': chars}
 
 
-def chunks(document: dict, budget: int = 14000, cap: int = 12) -> list:
+def chunks(document: dict, budget: int = 24000, cap: int = None) -> list:
     """Group segments into pieces small enough to read in one request.
 
     Each chunk keeps the labels it spans, so a claim can still cite the page it
-    came from. `cap` bounds one upload to a predictable number of API calls; the
-    remainder is reported rather than silently dropped.
+    came from. Every page is read: there is no cap unless a caller sets one, and
+    a capped remainder is reported rather than silently dropped.
     """
     made, current, size = [], [], 0
     for segment in document.get('segments') or []:
@@ -299,7 +299,7 @@ def chunks(document: dict, budget: int = 14000, cap: int = 12) -> list:
     if current:
         made.append(_chunk(document, current))
 
-    kept, dropped = made[:cap], made[cap:]
+    kept, dropped = (made, []) if cap is None else (made[:cap], made[cap:])
     for index, chunk in enumerate(kept, 1):
         chunk['index'] = index
         chunk['total'] = len(kept)

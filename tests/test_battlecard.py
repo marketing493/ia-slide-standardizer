@@ -1738,10 +1738,20 @@ def test_reading_a_document_never_claims_a_public_source():
 
 
 def _doc_client(bodies):
-    """A client that returns each body in turn, one per chunk."""
-    queue = list(bodies)
+    """A client that answers each chunk with the body for its first slide.
+
+    Sections are read in parallel, so replies are matched to the chunk they
+    answer rather than handed out in call order: the body at index n answers
+    the chunk that starts at "slide n+1".
+    """
+    import re as _re
 
     class FakeStream:
+        def __init__(self, request):
+            prompt = request['messages'][0]['content']
+            found = _re.search(r'\[slide (\d+)', prompt)
+            self.text = bodies[int(found.group(1)) - 1] if found else bodies[0]
+
         def __enter__(self):
             return self
 
@@ -1751,19 +1761,19 @@ def _doc_client(bodies):
         def get_final_message(self):
             return type('M', (), {
                 'stop_reason': 'end_turn', 'usage': _SearchUsage(0),
-                'content': [type('B', (), {'type': 'text',
-                                           'text': queue.pop(0)})()]})()
+                'content': [type('B', (), {'type': 'text', 'text': self.text})()]})()
 
     return type('C', (), {'messages': type('M', (), {
-        'stream': lambda self, **kw: FakeStream()})()})()
+        'stream': lambda self, **kw: FakeStream(kw)})()})()
 
 
 def test_a_document_is_read_into_claims_with_progress(monkeypatch):
     from battlecards import ai
 
-    document = {'filename': 'Rival deck.pptx', 'chars': 18000, 'segments': [
-        {'label': 'slide 1', 'text': 'a' * 9000},
-        {'label': 'slide 2', 'text': 'b' * 9000},
+    # Each slide is past half a pass, so they are read as two sections.
+    document = {'filename': 'Rival deck.pptx', 'chars': 30000, 'segments': [
+        {'label': 'slide 1', 'text': 'a' * 15000},
+        {'label': 'slide 2', 'text': 'b' * 15000},
     ]}
     bodies = [
         json.dumps([{'kind': 'gap', 'claim': 'Connectors cover SAP and Oracle only.',
@@ -1793,8 +1803,8 @@ def test_a_claim_repeated_across_slides_is_kept_once(monkeypatch):
     same = json.dumps([{'kind': 'gap', 'claim': 'Tagging is a services engagement.',
                         'detail': '', 'confidence': 'documented',
                         'source': 'Deck.pptx, slide 1'}])
-    document = {'filename': 'Deck.pptx', 'chars': 18000, 'segments': [
-        {'label': 'slide %d' % n, 'text': 'z' * 9000} for n in (1, 2)]}
+    document = {'filename': 'Deck.pptx', 'chars': 30000, 'segments': [
+        {'label': 'slide %d' % n, 'text': 'z' * 15000} for n in (1, 2)]}
     monkeypatch.setattr(ai, 'available', lambda: True)
     monkeypatch.setattr(ai, '_client', lambda: _doc_client([same, same]))
     events = list(ai.learn_from_document_events(document, 'o9 Solutions'))
@@ -1803,8 +1813,8 @@ def test_a_claim_repeated_across_slides_is_kept_once(monkeypatch):
 
 def test_one_bad_chunk_does_not_lose_the_rest(monkeypatch):
     from battlecards import ai
-    document = {'filename': 'Deck.pptx', 'chars': 18000, 'segments': [
-        {'label': 'slide %d' % n, 'text': 'z' * 9000} for n in (1, 2)]}
+    document = {'filename': 'Deck.pptx', 'chars': 30000, 'segments': [
+        {'label': 'slide %d' % n, 'text': 'z' * 15000} for n in (1, 2)]}
     good = json.dumps([{'kind': 'gap', 'claim': 'A real claim from slide two.',
                         'detail': '', 'confidence': 'documented',
                         'source': 'Deck.pptx, slide 2'}])
@@ -2734,3 +2744,39 @@ def test_a_real_error_is_not_retried(monkeypatch):
     with pytest.raises(ValueError):
         ai._final_message(Client(), model='m')
     assert len(calls) == 1
+
+
+def test_a_long_document_is_read_to_the_last_page(monkeypatch):
+    """A 136 page guide used to stop at twelve sections. Every page is read now."""
+    from battlecards import ai, docs
+    document = {'filename': 'Admin guide.pdf', 'chars': 136 * 3000, 'segments': [
+        {'label': 'page %d' % n, 'text': 'p' * 3000} for n in range(1, 137)]}
+    pieces, skipped = docs.chunks(document)
+    assert not skipped and pieces[-1]['range'].endswith('page 136')
+
+    requests = []
+
+    class Stream:
+        def __init__(self, request):
+            requests.append(request)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return type('M', (), {
+                'stop_reason': 'end_turn', 'usage': _SearchUsage(0),
+                'content': [type('B', (), {'type': 'text', 'text': '[]'})()]})()
+
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: type('C', (), {'messages': type(
+        'M', (), {'stream': lambda self, **kw: Stream(kw)})()})())
+    events = list(ai.learn_from_document_events(document, 'SAP'))
+    assert events[0]['skipped'] == []
+    assert len(requests) == len(pieces)
+    statuses = [event for event in events if event['type'] == 'status']
+    assert [event['index'] for event in statuses] == list(range(1, len(pieces) + 1))
+    assert events[-1]['type'] == 'done'

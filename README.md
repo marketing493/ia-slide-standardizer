@@ -259,10 +259,10 @@ claims somebody approves are stored, so a competitor document under an agreement
 never lands on a disk here. Reading it does send its text to the Anthropic API,
 which the page says plainly next to the drop zone.
 
-A long document is read in passes of about 14,000 characters, streamed back so
-the page shows progress instead of hanging. One upload is capped at twelve
-passes; anything past that is reported by page range rather than silently
-skipped. A file with almost no text is refused with the reason, because a scan
+A long document is read in full, in passes of about 24,000 characters, four
+passes at a time, streamed back so the page shows progress instead of hanging.
+There is no page cap: a 136 page administration guide is read end to end in a
+few minutes, and the cost so far is shown as it goes. A file with almost no text is refused with the reason, because a scan
 with no text layer is the most likely real failure and the least obvious one.
 
 Claims read from a document default to the `documented` tier, and `intel`

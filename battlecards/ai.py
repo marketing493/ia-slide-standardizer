@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from . import attributesmart, docs, intel, library
 from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
@@ -1205,21 +1206,45 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
     cost = {}
     seen = set()
 
-    for chunk in pieces:
+    def read(chunk):
+        return _final_message(
+            client,
+            model=MODEL,
+            max_tokens=12000,
+            system=system,
+            thinking={'type': 'adaptive'},
+            output_config={'effort': 'low'},
+            messages=[{'role': 'user',
+                       'content': _doc_ask(chunk, competitor, product)}],
+        )
+
+    # Every section is read, several at once, and the results are taken in page
+    # order so a claim repeated across pages keeps its first citation. A 136
+    # page guide is a few minutes this way rather than twenty.
+    pool = ThreadPoolExecutor(max_workers=DOC_PARALLEL)
+    try:
+        futures = [pool.submit(read, chunk) for chunk in pieces]
+        yield from _doc_results(pieces, futures, competitor, product, author,
+                                cost, seen)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    yield {'type': 'done', 'cost': dict(cost), 'found': len(seen)}
+
+
+# Sections read at the same time. Enough to finish a long guide quickly, few
+# enough to stay well inside an account's rate limit.
+DOC_PARALLEL = 4
+
+
+def _doc_results(pieces, futures, competitor, product, author, cost, seen):
+    for chunk, future in zip(pieces, futures):
         yield {'type': 'status', 'range': chunk['range'],
                'index': chunk['index'], 'total': chunk['total'],
-               'message': 'Reading %s' % chunk['range']}
+               'message': 'Reading %s (%d of %d)' % (chunk['range'], chunk['index'],
+                                                    chunk['total'])}
         try:
-            message = _final_message(
-                client,
-                model=MODEL,
-                max_tokens=12000,
-                system=system,
-                thinking={'type': 'adaptive'},
-                output_config={'effort': 'low'},
-                messages=[{'role': 'user',
-                           'content': _doc_ask(chunk, competitor, product)}],
-            )
+            message = future.result()
         except Exception as exc:
             log.exception('reading %s failed', chunk['range'])
             yield {'type': 'warning',
@@ -1262,5 +1287,3 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
             yield {'type': 'claim', 'claim': entry}
 
         yield {'type': 'usage', 'cost': dict(cost)}
-
-    yield {'type': 'done', 'cost': dict(cost), 'found': len(seen)}
