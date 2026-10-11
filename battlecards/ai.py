@@ -30,7 +30,7 @@ from .schema import DEPTHS, DEFAULT_DEPTH, RATING_VALUES
 
 log = logging.getLogger(__name__)
 
-MODEL = 'claude-opus-5'
+MODEL = 'claude-opus-5-5'
 # Server side web search, so competitor claims can carry a real source. This runs
 # on Anthropic's infrastructure, not from this container.
 
@@ -38,9 +38,9 @@ RESEARCH_MAX_TOKENS = 32000
 STRUCTURE_MAX_TOKENS = 32000
 CHAT_MAX_TOKENS = 8000
 
-# Claude Opus 5 token pricing, USD per million tokens. Cache writes bill at about
-# 1.25x input and cache reads at about 0.1x.
-PRICING = {'input': 5.00, 'output': 25.00, 'cache_write': 6.25, 'cache_read': 0.50}
+# Claude Opus 5.5 token pricing, USD per million tokens, from the Anthropic
+# pricing page: 5 minute cache writes at 1.25x input, cache reads at $0.20.
+PRICING = {'input': 4.00, 'output': 20.00, 'cache_write': 5.00, 'cache_read': 0.20}
 
 # Economy mode trades thoroughness for a predictable bill: shallower effort, fewer
 # searches and tighter ceilings. Useful for a first run on a small budget.
@@ -292,6 +292,19 @@ def _system_prompt(product: str, competitor: str) -> list:
         taught = ''
     if taught:
         blocks.append({'type': 'text', 'text': taught})
+    return blocks
+
+
+def _cache_tail(blocks: list) -> list:
+    """Put a cache breakpoint on the last system block.
+
+    Caching is a byte for byte prefix match, so a cached block can never serve
+    stale content: when a taught claim changes, the bytes change and the request
+    simply misses. Earlier breakpoints stay, so the rules shared across rivals
+    still hit when the rest of the prompt has moved on.
+    """
+    if blocks:
+        blocks[-1] = dict(blocks[-1], cache_control={'type': 'ephemeral'})
     return blocks
 
 
@@ -917,7 +930,13 @@ def chat_stream(history: list, card: dict = None, product: str = ''):
     if card:
         system.append({'type': 'text',
                        'text': 'The card currently open, as JSON:\n%s'
-                               % json.dumps(_card_digest(card), indent=1)})
+                               % json.dumps(_card_digest(card), indent=1,
+                                            sort_keys=True)})
+    # The taught claims and the open card are the same for every question about
+    # one card, and they are the bulk of the prompt. Cached, each follow up
+    # question reads them at a tenth of the price. The top level marker also
+    # caches the conversation so far, so a long chat does not re-bill its history.
+    _cache_tail(system)
 
     # A retry is only safe before the first word reaches the reader. After that,
     # starting over would print the answer twice.
@@ -927,6 +946,7 @@ def chat_stream(history: list, card: dict = None, product: str = ''):
             with client.messages.stream(
                 model=MODEL,
                 max_tokens=CHAT_MAX_TOKENS,
+                cache_control={'type': 'ephemeral'},
                 system=system,
                 thinking={'type': 'adaptive'},
                 output_config={'effort': 'medium'},
@@ -1063,11 +1083,11 @@ def extract_intel(text: str, competitor: str, product: str = '',
               'kinds': ', '.join(sorted(intel.KINDS)),
               'tiers': ', '.join(sorted(intel.CONFIDENCE))})
 
-    system = [{'type': 'text', 'text': SYSTEM_RULES,
-               'cache_control': {'type': 'ephemeral'}},
+    system = [{'type': 'text', 'text': SYSTEM_RULES},
               {'type': 'text', 'text': TEACH_SYSTEM}]
     if intel.is_ia(competitor):
         system.append({'type': 'text', 'text': IA_TEACH_SYSTEM})
+    _cache_tail(system)
     cost = {}
     message = _final_message(
         client,
@@ -1197,12 +1217,15 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
            'chars': document['chars'], 'chunks': len(pieces),
            'skipped': skipped}
 
-    system = [{'type': 'text', 'text': SYSTEM_RULES,
-               'cache_control': {'type': 'ephemeral'}},
+    system = [{'type': 'text', 'text': SYSTEM_RULES},
               {'type': 'text', 'text': TEACH_SYSTEM},
               {'type': 'text', 'text': DOC_SYSTEM}]
     if intel.is_ia(competitor):
         system.append({'type': 'text', 'text': IA_TEACH_SYSTEM})
+    # Every section of a document is read against the same instructions, so the
+    # whole system prompt is cached and each section after the first reads it
+    # at the cache rate.
+    _cache_tail(system)
     cost = {}
     seen = set()
 

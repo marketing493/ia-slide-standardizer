@@ -459,9 +459,9 @@ def test_generate_events_rejects_an_empty_competitor():
     assert events[0]['type'] == 'error'
 
 
-def test_model_is_opus_5():
+def test_model_is_opus_5_5():
     from battlecards import ai
-    assert ai.MODEL == 'claude-opus-5'
+    assert ai.MODEL == 'claude-opus-5-5'
 
 
 def test_ground_truth_carries_the_verified_attributesmart_facts():
@@ -551,7 +551,7 @@ def test_old_battlecard_link_still_works(client):
 
 def test_status_route_lists_the_depths(client):
     data = client.get('/api/battlecard/status').get_json()
-    assert data['model'] == 'claude-opus-5'
+    assert data['model'] == 'claude-opus-5-5'
     assert {entry['key'] for entry in data['depths']} == set(schema.DEPTHS)
     for entry in data['depths']:
         assert entry['label'] and entry['slides'] and entry['blurb']
@@ -734,16 +734,16 @@ class _Usage:
         self.output_tokens = output_tokens
 
 
-def test_cost_uses_the_published_opus_5_rates():
+def test_cost_uses_the_published_opus_5_5_rates():
     from battlecards import ai
-    assert ai.PRICING['input'] == 5.00 and ai.PRICING['output'] == 25.00
+    assert ai.PRICING['input'] == 4.00 and ai.PRICING['output'] == 20.00
     # One million of each, so the arithmetic is readable.
     one = ai.usage_cost(_Usage(input_tokens=1_000_000))
-    assert one['usd'] == 5.0
-    assert ai.usage_cost(_Usage(output_tokens=1_000_000))['usd'] == 25.0
+    assert one['usd'] == 4.0
+    assert ai.usage_cost(_Usage(output_tokens=1_000_000))['usd'] == 20.0
     # Cache writes bill above input, reads well below it.
-    assert ai.usage_cost(_Usage(cache_creation_input_tokens=1_000_000))['usd'] == 6.25
-    assert ai.usage_cost(_Usage(cache_read_input_tokens=1_000_000))['usd'] == 0.50
+    assert ai.usage_cost(_Usage(cache_creation_input_tokens=1_000_000))['usd'] == 5.0
+    assert ai.usage_cost(_Usage(cache_read_input_tokens=1_000_000))['usd'] == 0.20
 
 
 def test_cost_accumulates_across_calls():
@@ -754,7 +754,7 @@ def test_cost_accumulates_across_calls():
                               output_tokens=6_000))
     assert total['calls'] == 2
     assert total['input'] == 45_000 and total['output'] == 14_000
-    expected = (45_000 * 5 + 1_000 * 0.5 + 14_000 * 25) / 1_000_000
+    expected = (45_000 * 4 + 1_000 * 0.2 + 14_000 * 20) / 1_000_000
     assert total['usd'] == round(expected, 4)
 
 
@@ -796,7 +796,7 @@ def test_generate_route_passes_the_economy_flag(client, monkeypatch):
 
 def test_status_route_publishes_the_rates(client):
     pricing = client.get('/api/battlecard/status').get_json()['pricing']
-    assert pricing['input'] == 5.00 and pricing['output'] == 25.00
+    assert pricing['input'] == 4.00 and pricing['output'] == 20.00
 
 
 def test_building_a_saved_card_costs_nothing(tmp_path, monkeypatch):
@@ -963,7 +963,7 @@ def test_chat_sends_a_valid_transcript_to_the_api(monkeypatch):
     assert answer == 'Rows 3 and 7 are unverified.'
     assert seen['messages'] == [{'role': 'user',
                                  'content': 'which rows are unverified?'}]
-    assert seen['model'] == 'claude-opus-5'
+    assert seen['model'] == 'claude-opus-5-5'
     # The card reaches the model as system context, not as a fake dialogue turn.
     assert any('o9 Solutions' in block['text'] for block in seen['system'])
 
@@ -2780,3 +2780,34 @@ def test_a_long_document_is_read_to_the_last_page(monkeypatch):
     statuses = [event for event in events if event['type'] == 'status']
     assert [event['index'] for event in statuses] == list(range(1, len(pieces) + 1))
     assert events[-1]['type'] == 'done'
+
+
+def test_chat_caches_the_card_and_the_conversation(monkeypatch):
+    """Follow up questions must read the taught claims and card from the cache."""
+    from battlecards import ai
+    seen = {}
+
+    class Stream:
+        text_stream = iter(['ok'])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def stream(**request):
+        seen.update(request)
+        return Stream()
+
+    monkeypatch.setattr(ai, '_client', lambda: type('C', (), {
+        'messages': type('M', (), {'stream': staticmethod(stream)})()})())
+    card = {'meta': {'competitor': 'o9 Solutions', 'ia_product': 'AssortSmart'}}
+    list(ai.chat_stream([{'role': 'user', 'content': 'How do we beat them?'}],
+                        card, 'AssortSmart'))
+    assert seen['model'] == 'claude-opus-5-5'
+    assert seen['cache_control'] == {'type': 'ephemeral'}
+    assert seen['system'][-1].get('cache_control') == {'type': 'ephemeral'}
+    assert 'card currently open' in seen['system'][-1]['text']
+    breakpoints = sum(1 for block in seen['system'] if block.get('cache_control')) + 1
+    assert breakpoints <= 4, 'the API allows four cache breakpoints at most'

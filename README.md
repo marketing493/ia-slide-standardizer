@@ -15,7 +15,7 @@ Keynote and Google Slides.
 
 ## How generation works
 
-1. **Research.** Claude Opus 5 searches the public record with the `web_search` server
+1. **Research.** Claude Opus 5.5 searches the public record with the `web_search` server
    tool and writes a sourced brief. The brief streams to the browser while it is written,
    so a run that takes minutes never looks stalled and never trips a worker timeout.
 2. **Structure.** A second call turns the brief into the card payload. The shape is given
@@ -42,20 +42,25 @@ so the builder would rather hand a seller a question than a guess.
 ### What a run costs
 
 Every run reports its own token spend, live during generation and again in the result,
-computed from `response.usage` at the published Claude Opus 5 rates ($5 per million input,
-$25 per million output, cache writes 1.25x input, cache reads 0.1x).
+computed from `response.usage` at the published Claude Opus 5.5 rates ($4 per million input,
+$20 per million output, cache writes $5, cache reads $0.20). Opus 5.5 replaced Opus 5 to cut
+token spend by about a fifth, and cached input by 60%, for the same request code.
 
 | Path | Token cost |
 |---|---|
 | Building a card already in the library, at any depth | **$0**, no API call |
-| Economy run: low effort, 3 searches | roughly **$0.20** |
-| Standard run: high effort, 8 searches | roughly **$0.55 to $0.75** |
+| Economy run: low effort, 6 searches | about a fifth less than the figures measured on Opus 5 |
+| Standard run: high effort, 8 searches | about a fifth less than the figures measured on Opus 5 |
 
-**Web search bills a separate per-search fee** that does not appear in `usage`, so the
-figure the app shows is a floor rather than the whole invoice. Check the Anthropic pricing
-page for the current per-search rate.
+Chat questions about one card, and the sections of an uploaded document, reuse a cached
+prompt: the taught claims, the open card and the conversation so far are read at the cache
+rate after the first question.
 
-The economy checkbox drops effort to `low`, cuts searches from eight to three and tightens
+**Web search bills a separate per-search fee** ($10 per 1,000 searches, so about a cent each)
+that does not appear in `usage`, so the figure the app shows is a floor rather than the whole
+invoice.
+
+The economy checkbox drops effort to `low`, cuts searches from eight to six and tightens
 `max_tokens`. The brief comes back thinner, and the card has more Unclear ratings, which is
 the honest tradeoff of searching less.
 
@@ -548,7 +553,7 @@ battlecards/
   typeset.py     measuring, fitting, trimming, citations out of body copy
   builder.py     slide builders, pagination, the deck assembler
   compat.py      Google Slides compatibility audit
-  ai.py          Claude Opus 5 research, structured card generation, chat assistant
+  ai.py          Claude Opus 5.5 research, structured card generation, chat assistant
   store.py       the shared Postgres library, optional
   attributesmart.py  deep AttributeSmart card set, IA facts plus sourced rivals
   auth.py        optional HTTP basic auth over every route
