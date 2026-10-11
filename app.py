@@ -47,9 +47,12 @@ battlecard_intel.init(attempts=1)
 @app.route('/healthz')
 def healthz():
     """Unauthenticated health check, so the platform probe keeps working."""
+    # Render sets RENDER_GIT_COMMIT on every deploy, so this says which commit is
+    # live. When a fix "did not work", the first question is whether it shipped.
     return jsonify({'status': 'ok', 'auth': battlecard_auth.is_enabled(),
                     'library': battlecard_store.enabled(),
-                    'intel': battlecard_intel.stats()['claims']})
+                    'intel': battlecard_intel.stats()['claims'],
+                    'version': (os.environ.get('RENDER_GIT_COMMIT') or 'local')[:7]})
 
 # ─── Brand Constants ────────────────────────────────────────────────────────────
 BRAND = {

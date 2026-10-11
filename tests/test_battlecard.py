@@ -2859,3 +2859,8 @@ def test_the_claim_count_is_not_capped_at_300(monkeypatch):
     assert len(intel.export()['intel']) == 450, 'the export must not drop old claims'
     # A caller can still ask for a page.
     assert len([r for r in intel.listing(limit=20) if not r.get('seed')]) == 20
+
+
+def test_the_health_check_says_which_commit_is_live(client, monkeypatch):
+    monkeypatch.setenv('RENDER_GIT_COMMIT', '1741f6ed28bdeac1bd4e306cdad472a542336639')
+    assert client.get('/healthz').get_json()['version'] == '1741f6e'
