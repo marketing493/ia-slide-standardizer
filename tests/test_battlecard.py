@@ -2811,3 +2811,51 @@ def test_chat_caches_the_card_and_the_conversation(monkeypatch):
     assert 'card currently open' in seen['system'][-1]['text']
     breakpoints = sum(1 for block in seen['system'] if block.get('cache_control')) + 1
     assert breakpoints <= 4, 'the API allows four cache breakpoints at most'
+
+
+def test_the_claim_count_is_not_capped_at_300(monkeypatch):
+    """The Teach page froze at 349: 300 stored rows plus 49 committed seeds."""
+    import datetime
+    from battlecards import intel, store
+
+    stored = [(n, 'o9 Solutions', 'AssortSmart', 'gap', 'Claim %d.' % n, '', 'field',
+               'Field note', 'me', datetime.date(2026, 10, 1), False,
+               datetime.datetime(2026, 10, 1)) for n in range(450)]
+    seen = {}
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params):
+            seen['sql'], seen['params'] = sql, params
+
+        def fetchall(self):
+            limit = seen['params'][-1] if 'LIMIT' in seen['sql'] else None
+            return stored[:limit] if limit else stored
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cursor(self):
+            return Cursor()
+
+    monkeypatch.setattr(intel, 'init', lambda attempts=3: True)
+    monkeypatch.setattr(store, '_connect', lambda *a, **k: Conn())
+    monkeypatch.setattr(store, 'database_url', lambda: 'postgresql://x')
+    seeds = len(intel.seeds())
+
+    assert intel.stats()['claims'] == 450 + seeds
+    assert 'LIMIT' not in seen['sql']
+    assert len([row for row in intel.listing('o9 Solutions', product_only=False)
+                if not row.get('seed')]) == 450, 'cards must see every taught claim'
+    assert len(intel.export()['intel']) == 450, 'the export must not drop old claims'
+    # A caller can still ask for a page.
+    assert len([r for r in intel.listing(limit=20) if not r.get('seed')]) == 20

@@ -325,9 +325,13 @@ def add(entry: dict, author: str = '') -> dict:
                                'claims are still on screen.' % exc)
 
 
-def listing(competitor: str = '', product: str = '', limit: int = 300,
+def listing(competitor: str = '', product: str = '', limit: int = None,
             product_only: bool = True) -> list:
     """Every live claim, seeds included. Newest first.
+
+    No cap unless a caller asks for one. A silent ceiling of 300 here froze the
+    Teach page counter at 300 plus the committed seeds, left the oldest claims
+    out of the list and the export, and dropped them from the cards as well.
 
     `product_only` filters to claims about this IA product plus the company wide
     ones. Pass False to get everything taught about the rival: a claim keyed to
@@ -344,13 +348,15 @@ def listing(competitor: str = '', product: str = '', limit: int = 300,
         if product and product_only:
             clauses.append("(ia_product = %s OR ia_product = '')")
             params.append(product)
-        params.append(max(1, min(int(limit or 300), 1000)))
+        sql = ('SELECT ' + _COLUMNS + ' FROM intel WHERE ' + ' AND '.join(clauses)
+               + ' ORDER BY created_at DESC')
+        if limit:
+            sql += ' LIMIT %s'
+            params.append(max(1, int(limit)))
         try:
             with store._connect() as conn:
                 with conn.cursor() as cur:
-                    cur.execute('SELECT ' + _COLUMNS + ' FROM intel WHERE '
-                                + ' AND '.join(clauses)
-                                + ' ORDER BY created_at DESC LIMIT %s', tuple(params))
+                    cur.execute(sql, tuple(params))
                     rows = [_row(row) for row in cur.fetchall()]
         except Exception:
             log.exception('Could not read the intel store.')
