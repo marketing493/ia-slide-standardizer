@@ -447,18 +447,11 @@ capability matrix and the proof points. Any card rebuilds to PPTX at a different
 without regenerating, so a colleague's full technical card becomes your summary in one
 click.
 
-Render provisions the database from `render.yaml`:
-
-```yaml
-databases:
-  - name: ia-battlecards-db
-    plan: free
-    databaseName: battlecards
-    user: battlecards
-```
-
-`DATABASE_URL` is wired to it through `fromDatabase`, so a Blueprint apply needs no manual
-step. The table is created on first boot, and `init()` is safe to call repeatedly. Render
+The database lives outside Render, on Neon, and `DATABASE_URL` is pasted into the service's
+environment. `render.yaml` declares it with `sync: false` rather than creating a Render
+database, because a Blueprint would otherwise wire the app to a new, empty database. Any
+service, old or new, that carries the same `DATABASE_URL` sees the same library, taught
+claims and documents. The tables are created on first boot, and `init()` is safe to call repeatedly. Render
 hands out `postgres://` URLs and psycopg wants `postgresql://`, so the store rewrites the
 scheme; a test covers that.
 

@@ -17,15 +17,10 @@ services:
       # builder still assembles saved cards, but nothing is generated.
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Wired automatically from the database below. Without it the builder still
-      # works, but generated cards are not shared.
+      # The Neon connection string, pasted in the dashboard. It holds the shared
+      # library, every taught claim and the Existing Intelligence Database, so a
+      # new service pointed at the same string has all of it from the first boot.
+      # Deliberately not a Render database: a blueprint would create an empty one
+      # and wire the app to it, and Render's free databases expire.
       - key: DATABASE_URL
-        fromDatabase:
-          name: ia-battlecards-db
-          property: connectionString
-
-databases:
-  - name: ia-battlecards-db
-    plan: free
-    databaseName: battlecards
-    user: battlecards
+        sync: false
