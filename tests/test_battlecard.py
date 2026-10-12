@@ -3043,3 +3043,156 @@ def test_the_build_page_offers_the_database_and_ask_ai(client):
     assert 'Build from Existing Intelligence Database' in page
     assert 'How do you want this deck?' in page
     assert '>Ask AI<' in page and 'Ask about this card' not in page
+
+
+# ── Teach from links ────────────────────────────────────────────────────────────
+
+_RIVAL_PAGE = b'''<!doctype html><html><head><title>Assortment | Rival</title>
+<script>track()</script></head><body>
+<header><nav><a href="/">Home</a><a href="/careers/">Careers</a></nav></header>
+<div class="cookie-banner">We use cookies.</div>
+<main><h1>Assortment planning</h1>
+<p>Rival Assortment rebuilds store clusters every week from sales and climate data.</p>
+<ul><li>SAP S/4HANA connector</li><li>Oracle Retail connector</li></ul>
+<a href="/solutions/assortment/features">Features</a>
+<a href="/solutions/allocation/">Allocation</a>
+<a href="/login">Log in</a><a href="/privacy">Privacy</a><a href="/logo.png">Logo</a>
+<a href="https://elsewhere.example/solutions/x">Partner</a></main>
+<footer><p>Copyright Rival Corp</p></footer></body></html>'''
+
+
+def test_a_page_reads_as_its_content_without_menus_or_scripts():
+    from battlecards import crawl
+    title, text = crawl.page_text(crawl._tree(_RIVAL_PAGE))
+    assert title == 'Assortment | Rival'
+    assert '## Assortment planning' in text
+    assert 'rebuilds store clusters every week' in text
+    assert '- SAP S/4HANA connector' in text
+    for furniture in ('track()', 'Careers', 'We use cookies', 'Copyright'):
+        assert furniture not in text, furniture
+
+
+def test_the_crawl_follows_only_relevant_pages_on_the_same_site():
+    from battlecards import crawl
+    base = 'https://rival.example/solutions/assortment/'
+    found = crawl.links(crawl._tree(_RIVAL_PAGE), base)
+    ranked = crawl._rank(found, [base], {base})
+    assert ranked[0] == 'https://rival.example/solutions/assortment/features'
+    assert 'https://rival.example/solutions/allocation/' in ranked
+    for skipped in ('/login', '/privacy', '/logo.png', '/careers/', 'elsewhere.example'):
+        assert not any(skipped in url for url in ranked), skipped
+
+
+@pytest.mark.parametrize('url', [
+    'http://127.0.0.1/', 'http://10.1.2.3/admin', 'http://169.254.169.254/latest/',
+    'http://[::1]/', 'file:///etc/passwd', 'ftp://rival.example/',
+    'https://user:secret@rival.example/', 'http://93.184.215.14:8080/'])
+def test_the_crawler_never_reaches_a_private_address(url):
+    from battlecards import crawl
+    with pytest.raises(crawl.Blocked):
+        crawl._check(crawl.normalise(url))
+
+
+def test_a_pasted_link_is_made_fetchable():
+    from battlecards import crawl
+    assert crawl.normalise('rival.example/a#top') == 'https://rival.example/a'
+    assert crawl.normalise(' <HTTPS://Rival.example> ') == 'https://rival.example/'
+
+
+def _fake_site(monkeypatch, pages, robots=b''):
+    from battlecards import crawl
+    asked = []
+
+    def fetch(url):
+        asked.append(url)
+        if url.endswith('/robots.txt'):
+            return url, 'text/plain', robots
+        if url not in pages:
+            raise crawl.Blocked('The page was not found (404).')
+        return url, 'text/html', pages[url]
+
+    monkeypatch.setattr(crawl, 'fetch', fetch)
+    monkeypatch.setattr(crawl, '_robots', {})
+    return asked
+
+
+def _run(generator):
+    events = []
+    try:
+        while True:
+            events.append(next(generator))
+    except StopIteration as stop:
+        return events, stop.value
+
+
+def test_a_crawl_reads_the_links_then_related_pages_robots_permitting(monkeypatch):
+    from battlecards import crawl
+    feature = (b'<html><body><main><h1>Features</h1><p>' + b'A what if simulator for '
+               b'space changes across up to 5,000 stores. ' * 6 + b'</p></main></body></html>')
+    asked = _fake_site(monkeypatch, {
+        'https://rival.example/solutions/assortment/': _RIVAL_PAGE,
+        'https://rival.example/solutions/assortment/features': feature,
+        'https://rival.example/solutions/allocation/': feature},
+        robots=b'User-agent: *\nDisallow: /solutions/allocation/\n')
+    events, document = _run(crawl.crawl_events(
+        ['rival.example/solutions/assortment/', 'https://rival.example/gone'], follow=5))
+    pages = [event for event in events if event['type'] == 'page']
+    assert [p['ok'] for p in pages] == [True, False, True]
+    assert '404' in pages[1]['error']
+    assert 'https://rival.example/solutions/allocation/' not in asked
+    assert document['kind'] == crawl.KIND and document['pages'] == 2
+    assert document['filename'] == 'rival.example'
+    assert [s['label'] for s in document['segments']] == [
+        'https://rival.example/solutions/assortment/',
+        'https://rival.example/solutions/assortment/features']
+
+
+def test_a_crawl_with_nothing_readable_says_so(monkeypatch):
+    from battlecards import ai
+    _fake_site(monkeypatch, {})
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    events = list(ai.learn_from_links_events(['https://rival.example/'], 'Rival'))
+    assert events[-1]['type'] == 'error'
+    assert 'PDF' in events[-1]['message']
+
+
+def test_claims_from_pages_are_verified_and_cite_a_page_that_was_read(monkeypatch):
+    from battlecards import ai
+    page = 'https://rival.example/solutions/assortment/'
+    _fake_site(monkeypatch, {page: _RIVAL_PAGE})
+    reply = json.dumps([
+        {'kind': 'mechanism', 'claim': 'Their assortment page says clusters are '
+         'rebuilt every week.', 'detail': '', 'confidence': 'verified',
+         'source': page, 'competitor': 'Rival', 'ia_product': ''},
+        {'kind': 'strength', 'claim': 'Their assortment page lists an SAP S/4HANA '
+         'connector.', 'detail': '', 'confidence': 'verified',
+         'source': 'https://rival.example/made-up', 'competitor': 'Rival',
+         'ia_product': ''}])
+    client, requests = _recording_client([reply])
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: client)
+    events = list(ai.learn_from_links_events([page], 'Rival', 'AssortSmart', 'me'))
+    kinds = [event['type'] for event in events]
+    assert kinds[0] == 'crawl' and 'crawled' in kinds and kinds[-1] == 'done', kinds
+    claims = [event['claim'] for event in events if event['type'] == 'claim']
+    assert len(claims) == 2
+    assert all(claim['confidence'] == 'verified' for claim in claims)
+    assert {claim['source'] for claim in claims} == {page}
+    system = ' '.join(block['text'] for block in requests[0]['system'])
+    assert 'public web pages' in system
+    assert '[%s]' % page in requests[0]['messages'][0]['content']
+
+
+def test_the_crawl_route_checks_its_input(client):
+    assert client.post('/api/intel/crawl', json={'competitor': 'Rival'}).status_code == 400
+    assert client.post('/api/intel/crawl', json={'urls': ['https://a.example/']}
+                       ).status_code == 400
+    many = ['https://a.example/%d' % n for n in range(11)]
+    response = client.post('/api/intel/crawl', json={'urls': many, 'competitor': 'Rival'})
+    assert response.status_code == 400 and 'Up to 10' in response.get_json()['error']
+
+
+def test_the_teach_page_offers_crawl_links(client):
+    page = client.get('/intel').data.decode()
+    assert 'Crawl links' in page and 'id="links"' in page and 'Crawl and read' in page \
+        or 'Claude not connected' in page

@@ -275,6 +275,34 @@ refuses to record a file citation as `verified`: that tier means a link a buyer
 could open. Where the document is itself reporting a rumour, "we believe they
 will launch X", the claim comes back as `hearsay`.
 
+### Crawling links
+
+Public pages teach the builder too: a rival's product page, an integration list, a
+datasheet PDF, or our own product pages. Choose **Crawl links** on `/intel`, paste up
+to 10 links, and say how far to go: only those pages, or up to 5, 15 or 25 related
+pages on the same site. `battlecards/crawl.py` fetches them on the server, strips
+menus, cookie banners, footers and scripts, and hands the text to the same reader an
+upload goes through, one page at a time with its address as the label. Progress
+shows each page fetched or refused, and the claims arrive for approval like any other.
+
+- **Which pages it follows.** Links on the pasted pages that sit under the same section
+  (the rest of that product's pages) come first, then pages whose address names a
+  product, feature, integration, pricing or case study. Other sites, logins, careers,
+  legal, news and media files are skipped. A followed page is only read when the site's
+  robots.txt allows it; the links somebody pastes are read as asked.
+- **Verified, with the page.** Claims from a public page come back `verified` and cite
+  the page address they came from, and `crawl` replaces any address the model did not
+  actually read. A PDF page is cited as `address#page=3`, which opens at that page. A
+  rival's own site is written as what it says ("Their assortment page says..."), since
+  it is their marketing.
+- **Safe to point at anything.** Only public http(s) addresses on the normal ports are
+  fetched, checked again at every redirect, so a pasted link can never reach the
+  service's own network. Pages are capped at 15MB and 15 seconds, and one crawl at
+  about 400,000 characters of text; pages past that are named, not read.
+- **What it cannot read.** Some sites refuse automated readers, and some build their
+  pages with scripts, which leaves almost no text. The page says which, and the fix is
+  to save the page as a PDF and upload it.
+
 ### Teaching the builder about our own products
 
 The honesty rules forbid a card from claiming any Impact Analytics capability
@@ -581,6 +609,7 @@ battlecards/
   typeset.py     measuring, fitting, trimming, citations out of body copy
   builder.py     slide builders, pagination, the deck assembler
   vault.py       the Existing Intelligence Database: kept documents and their text
+  crawl.py       reads public pages for the Teach page: pasted links and related pages
   compat.py      Google Slides compatibility audit
   ai.py          Claude Opus 5.5 research, structured card generation, chat assistant
   store.py       the shared Postgres library, optional

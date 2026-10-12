@@ -326,5 +326,5 @@ def _chunk(document: dict, segments: list) -> dict:
     span = labels[0] if len(labels) == 1 else '%s to %s' % (labels[0], labels[-1])
     body = '\n\n'.join('[%s]\n%s' % (segment['label'], segment['text'])
                        for segment in segments)
-    return {'range': span, 'text': body,
+    return {'range': span, 'text': body, 'labels': labels,
             'citation': '%s, %s' % (document['filename'], span)}

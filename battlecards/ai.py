@@ -24,7 +24,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import attributesmart, docs, intel, library, vault
+from . import attributesmart, crawl, docs, intel, library, vault
 from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
 from .schema import DEPTHS, DEFAULT_DEPTH, RATING_VALUES
 
@@ -1314,6 +1314,73 @@ def _doc_ask(chunk: dict, competitor: str, product: str) -> str:
                'kinds': ', '.join(sorted(intel.KINDS))})
 
 
+WEB_SYSTEM = """You are reading public web pages a colleague asked you to crawl,
+to learn what they say about a company and its products.
+
+The pages are the evidence. Every claim you record must be supported by words
+actually on a page you were given, and must cite that page's address exactly as
+it appears in brackets above its text.
+
+- These pages are public, so default every claim to confidence "verified" and put
+  the page address in `source`. Never cite an address that is not in brackets in
+  the extract.
+- A company's own site is the company describing itself. Write its claims as what
+  the page says: "Their assortment page says clusters are rebuilt weekly", not
+  "Clusters are rebuilt weekly". A customer quote or case study on their site is
+  still their marketing.
+- Use "hearsay" when a page reports a rumour, a forecast or somebody's opinion
+  about another company.
+- Record nothing the pages do not say. Menus, cookie notices, sign up prompts and
+  pages with no product substance get an empty array. Padding the list with vague
+  marketing lines ("AI powered", "best in class") makes the store useless.
+- Prefer the specific over the sweeping: named modules, named integrations, stated
+  numbers, named customers, deployment and pricing model.
+- One fact per claim. Do not merge two capabilities into one sentence."""
+
+
+def _web_ask(chunk: dict, competitor: str, product: str) -> str:
+    return ('Read these pages and record what they say about %(comp)s%(prod)s.\n\n'
+            'PAGES\n%(text)s\n\n'
+            'Return one JSON array and nothing else. No prose, no code fence. An '
+            'empty array is the right answer when the pages say nothing useful '
+            'about them. Each element has exactly these keys:\n'
+            '{"kind": one of %(kinds)s, "claim": "one sentence", '
+            '"detail": "the rest, including what the page says around it", '
+            '"confidence": "verified" or "hearsay", '
+            '"source": "the page address in brackets above the text it came from", '
+            '"competitor": "who the row is about", '
+            '"ia_product": "the Impact Analytics product it concerns, or an '
+            'empty string"}'
+            % {'comp': competitor or 'the competitor',
+               'prod': (' as it relates to %s' % product) if product else '',
+               'text': chunk['text'],
+               'kinds': ', '.join(sorted(intel.KINDS))})
+
+
+def learn_from_links_events(urls, competitor: str, product: str = '',
+                            author: str = '', follow: int = 0):
+    """Crawl the pasted links and yield proposed claims, like an upload.
+
+    The fetch progress streams first, then the pages are read exactly as a
+    document is, so the review and approval that follow are the same.
+    """
+    if not available():
+        yield {'type': 'error',
+               'message': 'No Anthropic credential is configured, so the pages '
+                          'cannot be read. Set ANTHROPIC_API_KEY on the service.'}
+        return
+    document = yield from crawl.crawl_events(urls, follow)
+    if not document or document['chars'] < docs.MIN_USEFUL_CHARS:
+        yield {'type': 'error',
+               'message': 'None of the links gave any text to read. If the site '
+                          'blocks automated reading or builds its pages with '
+                          'scripts, save the page as a PDF and upload it instead.'}
+        return
+    yield {'type': 'crawled', 'site': document['filename'], 'pages': document['pages'],
+           'chars': document['chars']}
+    yield from learn_from_document_events(document, competitor, product, author)
+
+
 def learn_from_document_events(document: dict, competitor: str, product: str = '',
                                author: str = ''):
     """Read an uploaded document and yield proposed claims as they come.
@@ -1334,13 +1401,20 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
         return
 
     pieces, skipped = docs.chunks(document)
+    # Crawled pages are public: each claim cites the page it came from, so a
+    # section's fallback citation is its first page rather than a file name.
+    web = document.get('kind') == crawl.KIND
+    if web:
+        for chunk in pieces:
+            chunk['web'] = True
+            chunk['citation'] = chunk['labels'][0]
     yield {'type': 'plan', 'filename': document['filename'],
            'chars': document['chars'], 'chunks': len(pieces),
            'skipped': skipped}
 
     system = [{'type': 'text', 'text': SYSTEM_RULES},
               {'type': 'text', 'text': TEACH_SYSTEM},
-              {'type': 'text', 'text': DOC_SYSTEM}]
+              {'type': 'text', 'text': WEB_SYSTEM if web else DOC_SYSTEM}]
     if intel.is_ia(competitor):
         system.append({'type': 'text', 'text': IA_TEACH_SYSTEM})
     # Every section of a document is read against the same instructions, so the
@@ -1359,7 +1433,8 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
             thinking={'type': 'adaptive'},
             output_config={'effort': 'low'},
             messages=[{'role': 'user',
-                       'content': _doc_ask(chunk, competitor, product)}],
+                       'content': (_web_ask if web else _doc_ask)(
+                           chunk, competitor, product)}],
         )
 
     # Every section is read, several at once, and the results are taken in page
@@ -1374,6 +1449,19 @@ def learn_from_document_events(document: dict, competitor: str, product: str = '
         pool.shutdown(wait=False, cancel_futures=True)
 
     yield {'type': 'done', 'cost': dict(cost), 'found': len(seen)}
+
+
+def _web_source(row: dict, chunk: dict) -> str:
+    """The page a crawled claim came from, never an address the model made up."""
+    source = str(row.get('source') or '').strip()
+    labels = chunk.get('labels') or [chunk['citation']]
+    if source in labels:
+        return source
+    # A PDF's pages are labelled "address#page=3"; a bare address names it too.
+    for label in labels:
+        if source and label.startswith(source):
+            return label
+    return chunk['citation']
 
 
 # Sections read at the same time. Enough to finish a long guide quickly, few
@@ -1413,6 +1501,8 @@ def _doc_results(pieces, futures, competitor, product, author, cost, seen):
 
         for row in rows:
             row = _settle_row(row, competitor, product, author)
+            if chunk.get('web'):
+                row['source'] = _web_source(row, chunk)
             if not str(row.get('source') or '').strip():
                 row['source'] = chunk['citation']
             try:

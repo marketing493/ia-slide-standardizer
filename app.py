@@ -23,6 +23,7 @@ from battlecards import store as battlecard_store
 from battlecards import intel as battlecard_intel
 from battlecards import docs as battlecard_docs
 from battlecards import vault as battlecard_vault
+from battlecards import crawl as battlecard_crawl
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -1098,6 +1099,7 @@ def intel_page():
     """Where the team teaches the builder what it knows about a rival."""
     return render_template('intel.html',
                            ai_enabled=battlecard_ai.available(),
+                           max_links=battlecard_crawl.MAX_LINKS,
                            library_enabled=battlecard_store.enabled(),
                            competitors=[entry['name'] for entry
                                         in battlecard_service.presets()['competitors']],
@@ -1306,6 +1308,45 @@ def intel_upload():
                 yield 'data: %s\n\n' % json.dumps(event)
         except Exception as exc:
             app.logger.exception('learning from a document failed')
+            yield 'data: %s\n\n' % json.dumps(
+                {'type': 'error', 'message': battlecard_ai.friendly_error(exc)})
+
+    return app.response_class(stream(), mimetype='text/event-stream',
+                              headers={'Cache-Control': 'no-cache',
+                                       'X-Accel-Buffering': 'no'})
+
+
+@app.route('/api/intel/crawl', methods=['POST'])
+def intel_crawl():
+    """Fetch the pasted links, and optionally related pages on the same site, then
+    stream out the claims they propose, exactly like an uploaded document."""
+    data = request.get_json(silent=True) or {}
+    raw = data.get('urls') or []
+    if isinstance(raw, str):
+        raw = raw.split()
+    urls = [str(url).strip() for url in raw if str(url).strip()]
+    if not urls:
+        return jsonify({'error': 'Paste at least one link to read.'}), 400
+    if len(urls) > battlecard_crawl.MAX_LINKS:
+        return jsonify({'error': 'Up to %d links at a time. Split the rest into '
+                                 'another crawl.' % battlecard_crawl.MAX_LINKS}), 400
+    competitor = str(data.get('competitor') or '').strip()
+    if not competitor:
+        return jsonify({'error': 'Name who these pages are about first.'}), 400
+    try:
+        follow = int(data.get('follow') or 0)
+    except (TypeError, ValueError):
+        follow = 0
+    product = str(data.get('ia_product') or '').strip()
+    author = _author()
+
+    def stream():
+        try:
+            for event in battlecard_ai.learn_from_links_events(
+                    urls, competitor, product, author, follow):
+                yield 'data: %s\n\n' % json.dumps(event)
+        except Exception as exc:
+            app.logger.exception('learning from links failed')
             yield 'data: %s\n\n' % json.dumps(
                 {'type': 'error', 'message': battlecard_ai.friendly_error(exc)})
 
