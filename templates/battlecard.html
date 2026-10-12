@@ -106,7 +106,11 @@
         .dbpanel .row .cap { margin: 0; }
         .dbpanel .row button { margin-left: auto; font-family: var(--sans); font-size: 12.5px; font-weight: 600;
             color: var(--impact-blue); background: none; border: 0; cursor: pointer; padding: 0; }
-        .doclist { max-height: 230px; overflow: auto; display: grid; gap: 6px; }
+        .doclist { max-height: 300px; overflow: auto; display: grid; gap: 6px; }
+        .doclist .shelfname { font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase;
+            color: var(--gray3); margin: 8px 0 1px; }
+        .doclist .shelfname:first-child { margin-top: 0; }
+        .doclist label b { display: block; font-weight: 600; font-size: 14px; }
         .doclist label { display: flex; gap: 10px; align-items: flex-start; background: var(--white);
             border: 1px solid var(--gray1); border-radius: var(--r-xs); padding: 9px 11px; font-size: 13.5px; cursor: pointer; }
         .doclist label input { margin-top: 3px; }
@@ -379,14 +383,23 @@ function drawDocs() {
     }
     const ticked = new Set([...$('docList').querySelectorAll('input:checked')].map(i => i.value));
     const fresh = !ticked.size;
-    const ordered = [...dbDocs].sort((a, b) =>
-        ((b.competitor || '').toLowerCase() === rival) - ((a.competitor || '').toLowerCase() === rival));
-    $('docList').innerHTML = ordered.map(d => {
-        const on = fresh ? (rival && (d.competitor || '').toLowerCase() === rival)
-                         : ticked.has(String(d.id));
-        const tags = [d.competitor, d.ia_product].filter(Boolean).join(' · ');
-        return `<label><input type="checkbox" value="${d.id}"${on ? ' checked' : ''}>
-            <span>${esc(d.filename)}<small>${esc(tags || 'Untagged')} · ${d.sections} section${d.sections === 1 ? '' : 's'}</small></span></label>`;
+    const mine = d => (d.competitor || '').toLowerCase() === rival;
+    // Shelf by shelf, the rival's own files first within each, then by company.
+    const shelves = [['battlecard', 'Battlecards'], ['competitor', 'Competitor intelligence'],
+                     ['client', 'Client lists']];
+    $('docList').innerHTML = shelves.map(([key, label]) => {
+        const rows = dbDocs.filter(d => (d.category || 'competitor') === key).sort((a, b) =>
+            mine(b) - mine(a) || (a.competitor || '~').localeCompare(b.competitor || '~'));
+        if (!rows.length) return '';
+        return `<div class="shelfname">${label}</div>` + rows.map(d => {
+            // A rival's client list is ticked with the rest of their material;
+            // our own client list is left for the seller to choose.
+            const on = fresh ? (rival && mine(d)) : ticked.has(String(d.id));
+            const tags = [d.filename, d.ia_product, d.sections + ' section' + (d.sections === 1 ? '' : 's')]
+                .filter(Boolean).join(' · ');
+            return `<label><input type="checkbox" value="${d.id}"${on ? ' checked' : ''}>
+                <span><b>${esc(d.competitor || 'Company not named')}</b><small>${esc(tags)}</small></span></label>`;
+        }).join('');
     }).join('');
 }
 

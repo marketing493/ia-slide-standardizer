@@ -19,19 +19,33 @@
         .counts { display: flex; gap: 46px; margin-top: 38px; flex-wrap: wrap; }
         .count b { display: block; font-family: var(--serif); font-weight: 200; font-size: 52px; line-height: .95; letter-spacing: -2.4px; }
         .count span { display: block; margin-top: 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255,255,255,.6); }
+        .footnote { margin-top: 18px; font-size: 13px; color: rgba(255,255,255,.6); }
 
         .page { max-width: 1160px; margin: 0 auto; padding: 0 40px 84px; }
         .console { margin-top: -110px; position: relative; z-index: 10; padding: 34px; }
         .console h2 { font-family: var(--serif); font-weight: 300; font-size: 30px; letter-spacing: -1px; margin: 0; }
         .console .sub { color: #5f5f5f; margin-top: 8px; font-size: 15px; max-width: 64ch; line-height: 1.55; }
-
-        .who { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 24px; }
-        .who label { flex: 1; min-width: 210px; }
         .cap { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; color: var(--gray3); margin-bottom: 7px; }
 
-        .dropzone { display: block; margin-top: 20px; border: 2px dashed var(--gray2); border-radius: var(--r); background: rgba(255,255,255,.55); padding: 44px 28px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+        /* ── The three shelves, as a choice ───────────────────────────────── */
+        .kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 24px; }
+        .kind { text-align: left; font-family: var(--sans); background: var(--white); border: 1px solid var(--gray1); border-radius: var(--r-sm); padding: 15px 16px 14px; cursor: pointer; display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; transition: border-color .15s, box-shadow .15s; }
+        .kind:hover { border-color: var(--gray2); }
+        .kind.on { border-color: var(--impact-blue); box-shadow: 0 0 0 1px var(--impact-blue), var(--lift); }
+        .kind .glyph { width: 30px; height: 30px; border-radius: 8px; background: var(--off-white); color: var(--impact-blue); display: flex; align-items: center; justify-content: center; }
+        .kind.on .glyph { background: var(--impact-blue); color: var(--white); }
+        .kind .kn { display: block; font-weight: 600; font-size: 15px; color: var(--black); }
+        .kind .kd { display: block; font-size: 12.5px; color: #6a6a6a; margin-top: 3px; line-height: 1.45; }
+
+        .who { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 18px; }
+        .who label { flex: 1; min-width: 210px; }
+        .who label.wide { flex-basis: 100%; }
+        .field.missing { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255,111,28,.14); }
+
+        .dropzone { display: block; margin-top: 20px; border: 2px dashed var(--gray2); border-radius: var(--r); background: rgba(255,255,255,.55); padding: 40px 28px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
         .dropzone:hover, .dropzone.over { border-color: var(--impact-blue); background: rgba(38,76,215,.05); }
         .dropzone .big { font-family: var(--serif); font-weight: 300; font-size: 23px; letter-spacing: -.6px; }
+        .dropzone .big em { color: var(--impact-blue); }
         .dropzone .small { font-size: 13.5px; color: var(--gray3); margin-top: 9px; line-height: 1.55; }
         .dropzone input { display: none; }
 
@@ -50,28 +64,48 @@
         .flash.tell { background: rgba(38,76,215,.08); color: var(--blue-ink); }
         .flash a { color: inherit; font-weight: 600; }
 
-        /* ── What is kept ─────────────────────────────────────────────────── */
+        /* ── What is kept, shelf by shelf ─────────────────────────────────── */
         .kept { margin-top: 56px; }
         .kept .head { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
         .kept .head h2 { font-family: var(--serif); font-weight: 300; font-size: 34px; letter-spacing: -1.3px; margin: 0; }
         .kept .head select { margin-left: auto; flex: 0 0 240px; }
         .kept .hint { color: #5f5f5f; font-size: 14.5px; margin-top: 8px; max-width: 70ch; line-height: 1.55; }
         .kept .hint a { color: var(--impact-blue); font-weight: 600; text-decoration: none; }
-        .shelf { margin-top: 22px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-        .doc { background: var(--white); border: 1px solid var(--gray1); border-radius: var(--r-sm); padding: 18px 18px 16px; display: grid; grid-template-columns: 48px 1fr; gap: 14px; box-shadow: var(--lift); }
-        .doc .type { width: 48px; height: 58px; border-radius: 6px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .8px; color: var(--white); background: var(--impact-blue); position: relative; }
-        .doc .type::before { content: ''; position: absolute; top: 0; right: 0; width: 14px; height: 14px; background: linear-gradient(225deg, var(--off-white) 50%, rgba(255,255,255,.35) 50%); border-radius: 0 6px 0 0; }
-        .doc .type.pdf { background: #1C1B1B; }
-        .doc .type.pptx { background: var(--orange); }
-        .doc .name { font-weight: 600; font-size: 15px; line-height: 1.4; word-break: break-word; }
-        .doc .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-        .doc .tags span { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: rgba(38,76,215,.08); color: var(--blue-ink); }
-        .doc .tags span.mute { background: var(--off-white); color: #6a6a6a; font-weight: 500; }
-        .doc .note { font-size: 13px; color: #5f5f5f; margin-top: 8px; line-height: 1.5; }
-        .doc .acts { display: flex; gap: 14px; margin-top: 12px; align-items: center; }
-        .doc .acts a, .doc .acts button { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--impact-blue); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
-        .doc .acts button { color: var(--gray3); margin-left: auto; }
-        .doc .acts button:hover { color: var(--orange); }
+
+        .tabs { display: flex; gap: 4px; margin-top: 24px; border-bottom: 1px solid var(--gray1); overflow-x: auto; }
+        .tab { font-family: var(--sans); font-size: 15px; font-weight: 600; color: #6a6a6a; background: none; border: 0; border-bottom: 2px solid transparent; padding: 12px 16px 13px; margin-bottom: -1px; cursor: pointer; white-space: nowrap; display: flex; gap: 9px; align-items: center; }
+        .tab:hover { color: var(--black); }
+        .tab.on { color: var(--impact-blue); border-bottom-color: var(--impact-blue); }
+        .tab i { font-style: normal; font-size: 12px; font-weight: 600; min-width: 22px; padding: 2px 7px; border-radius: 99px; background: var(--off-white); color: #6a6a6a; text-align: center; }
+        .tab.on i { background: var(--impact-blue); color: var(--white); }
+
+        .shelf { margin-top: 22px; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+        .co { background: var(--white); border: 1px solid var(--gray1); border-radius: var(--r-sm); box-shadow: var(--lift); overflow: hidden; }
+        .co .top { display: grid; grid-template-columns: 52px 1fr; gap: 14px; align-items: center; padding: 18px 18px 14px; }
+        .co .mono { width: 52px; height: 52px; border-radius: 12px; background: var(--impact-blue); color: var(--white); display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-weight: 300; font-size: 23px; letter-spacing: -.5px; }
+        .co.unnamed .mono { background: var(--off-white); color: var(--gray3); border: 1px dashed var(--gray2); }
+        .co .cname { font-family: var(--serif); font-weight: 300; font-size: 26px; letter-spacing: -.8px; line-height: 1.1; word-break: break-word; }
+        .co.unnamed .cname { color: var(--gray3); }
+        .co .cmeta { font-size: 12.5px; color: var(--gray3); margin-top: 5px; }
+        .co ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--gray1); }
+        .co li { padding: 11px 18px 12px; border-top: 1px solid var(--off-white); }
+        .co li:first-child { border-top: 0; }
+        .co .file { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: start; }
+        .co .type { width: 40px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; letter-spacing: .7px; color: var(--white); background: var(--impact-blue); margin-top: 1px; }
+        .co .type.pdf { background: #1C1B1B; }
+        .co .type.pptx { background: var(--orange); }
+        .co .fname { font-size: 13.5px; color: #3c3c3c; line-height: 1.4; word-break: break-word; }
+        .co .fsub { font-size: 12px; color: var(--gray3); margin-top: 3px; line-height: 1.45; }
+        .co .fsub b { font-weight: 600; color: var(--blue-ink); }
+        .co .note { font-size: 12.5px; color: #5f5f5f; margin-top: 5px; line-height: 1.5; }
+        .co .acts { display: flex; gap: 14px; margin-top: 7px; align-items: center; }
+        .co .acts a, .co .acts button { font-family: var(--sans); font-size: 12.5px; font-weight: 600; color: var(--impact-blue); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+        .co .acts .rm { color: var(--gray3); margin-left: auto; }
+        .co .acts .rm:hover { color: var(--orange); }
+        .co .edit { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
+        .co .edit input { grid-column: 1 / -1; }
+        .co .edit .field { padding: 8px 10px; font-size: 13.5px; }
+        .co .edit .btn { padding: 8px 14px; font-size: 13px; }
 
         .void { margin-top: 26px; background: var(--white); border: 1px dashed var(--gray2); border-radius: var(--r); padding: 56px 34px; text-align: center; }
         .void p { color: var(--gray3); margin-top: 10px; font-size: 16px; max-width: 52ch; margin-left: auto; margin-right: auto; line-height: 1.55; }
@@ -82,6 +116,10 @@
             .console { padding: 22px; margin-top: -104px; }
             .counts { gap: 26px; }
             .count b { font-size: 40px; }
+            .kinds { grid-template-columns: 1fr; }
+            .tabs { flex-wrap: wrap; gap: 6px; border-bottom: 0; overflow: visible; }
+            .tab { border: 1px solid var(--gray1); border-radius: 99px; margin: 0; padding: 8px 13px; font-size: 14px; background: var(--white); }
+            .tab.on { border-color: var(--impact-blue); background: rgba(38,76,215,.06); }
             .kept .head select { margin-left: 0; flex-basis: 100%; }
             .shelf { grid-template-columns: 1fr; }
         }
@@ -106,27 +144,47 @@
     <div class="wrap">
         <p class="eyebrow">Existing intelligence database</p>
         <h1 class="display">Everything the team already <em>holds</em></h1>
-        <p class="lede">Win loss reports, rival datasheets, analyst notes, old battlecards.
-            Upload them once and they stay here for good, ready to download and ready to
-            build a deck from on the Build page.</p>
+        <p class="lede">Old battlecards, rival datasheets, win loss notes and client lists.
+            Upload them once and they stay here for good, filed by company, ready to
+            download and ready to build a deck from on the Build page.</p>
         <div class="counts">
-            <div class="count"><b id="cDocs">0</b><span>Documents kept</span></div>
-            <div class="count"><b id="cRivals">0</b><span>Rivals covered</span></div>
-            <div class="count"><b id="cSections">0</b><span>Pages and slides read</span></div>
-            <div class="count"><b id="cSize">0</b><span>Stored</span></div>
+            {% for key, label in shelves.items() %}
+            <div class="count"><b id="c-{{ key }}">0</b><span>{{ label }}</span></div>
+            {% endfor %}
+            <div class="count"><b id="cCompanies">0</b><span>Companies covered</span></div>
         </div>
+        <p class="footnote" id="footnote"></p>
     </div>
 </section>
 
 <div class="page">
     <section class="console glass">
         <h2>Add to the database</h2>
-        <p class="sub">Tag who the files are about so they come up first when somebody builds
-            a card on that rival. Several files at once is fine.</p>
+        <p class="sub">Pick the shelf, name the company the files are about, then drop them in.
+            Several files at once is fine.</p>
+
+        <span class="cap" style="margin-top:22px;margin-bottom:0">What are you adding?</span>
+        <div class="kinds" id="kinds">
+            <button type="button" class="kind" data-shelf="battlecard">
+                <span class="glyph"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M8 3v10M2 7h6"/></svg></span>
+                <span><span class="kn">Battlecards</span>
+                <span class="kd">Cards and decks the team already made on a rival.</span></span>
+            </button>
+            <button type="button" class="kind" data-shelf="competitor">
+                <span class="glyph"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg></span>
+                <span><span class="kn">Competitor intelligence</span>
+                <span class="kd">Datasheets, analyst notes, win loss reports, their own decks.</span></span>
+            </button>
+            <button type="button" class="kind" data-shelf="client">
+                <span class="glyph"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="6" cy="5.5" r="2.5"/><path d="M1.5 13.5c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4M11 3.2a2.4 2.4 0 0 1 0 4.6M12.5 9.7c1.3.5 2 1.8 2 3.8"/></svg></span>
+                <span><span class="kn">Client lists</span>
+                <span class="kd">Who buys from whom: our clients, or a rival's named customers.</span></span>
+            </button>
+        </div>
 
         <div class="who">
-            <label><span class="cap">Who is this about</span>
-                <input class="field" id="competitor" list="rivals" placeholder="o9 Solutions (optional)" autocomplete="off">
+            <label><span class="cap" id="companyCap">Company</span>
+                <input class="field" id="competitor" list="rivals" placeholder="o9 Solutions" autocomplete="off">
                 <datalist id="rivals">
                     <option value="Impact Analytics">Our own products</option>
                     {% for name in competitors %}<option value="{{ name }}"></option>{% endfor %}
@@ -138,14 +196,14 @@
                     {% for name in products %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
                 </select>
             </label>
-            <label style="flex-basis:100%"><span class="cap">Note (optional)</span>
+            <label class="wide"><span class="cap">Note (optional)</span>
                 <input class="field" id="note" maxlength="500" placeholder="From the Q3 bake off. Their own deck, shared by the buyer.">
             </label>
         </div>
 
         <label class="dropzone" id="drop">
             <input type="file" id="picker" multiple accept="{{ formats | join(',') }}">
-            <div class="big">Drop the documents here</div>
+            <div class="big">Drop <em id="dropShelf">competitor intelligence</em> here</div>
             <div class="small">{{ formats | join('  ') }} · up to {{ max_upload_mb }}MB each</div>
         </label>
         <div class="files" id="files"></div>
@@ -153,16 +211,22 @@
         <p class="privacy">Files are stored in the team's database with their original
             bytes, so anyone signed in to the builder can download them again. Building a
             deck from them sends their text to the Anthropic API. Upload what you are
-            allowed to share, and take the same care you would with any competitor material.</p>
+            allowed to share, and take the same care you would with any competitor or
+            client material.</p>
     </section>
 
     <section class="kept">
         <div class="head">
             <h2>In the database</h2>
-            <select class="field" id="filter"><option value="">Every rival</option></select>
+            <select class="field" id="filter"><option value="">Every company</option></select>
         </div>
         <p class="hint">To make a deck from these, open <a href="{{ url_for('index') }}">Build</a>
             and choose <b>Build from Existing Intelligence Database</b>.</p>
+        <div class="tabs" id="tabs" role="tablist">
+            {% for key, label in shelves.items() %}
+            <button class="tab" role="tab" data-shelf="{{ key }}">{{ label }} <i id="t-{{ key }}">0</i></button>
+            {% endfor %}
+        </div>
         <div id="shelf"></div>
     </section>
 </div>
@@ -171,17 +235,39 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const SHELVES = {{ shelves | tojson }};
+// What the company field asks for on each shelf.
+const ASK = {
+    battlecard: ['Which company is the card on', 'o9 Solutions'],
+    competitor: ['Which competitor', 'o9 Solutions'],
+    client: ['Whose clients', 'Impact Analytics, or the rival whose customers these are']
+};
 let docs = [];
+let shelf = SHELVES[location.hash.slice(1)] ? location.hash.slice(1) : 'competitor';
 
 const size = bytes => bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + 'MB'
     : bytes >= 1024 ? Math.round(bytes / 1024) + 'KB' : bytes + 'B';
+// Two letters for the company badge. A name that leads with a number in it,
+// like o9, keeps it: "O9", not "OS".
+const initials = name => {
+    const words = name.replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+    if (!words.length) return '?';
+    if (/\d/.test(words[0])) return words[0].slice(0, 2).toUpperCase();
+    return words.slice(0, 2).map(w => w[0].toUpperCase()).join('');
+};
+const pagesWord = n => `${n.toLocaleString()} page${n === 1 ? '' : 's'} and slides`;
 
 function stats(s) {
     s = s || {};
-    $('cDocs').textContent = s.documents || 0;
-    $('cRivals').textContent = s.rivals || 0;
-    $('cSections').textContent = (s.sections || 0).toLocaleString();
-    $('cSize').textContent = size(s.bytes || 0);
+    const by = s.categories || {};
+    Object.keys(SHELVES).forEach(k => {
+        $('c-' + k).textContent = by[k] || 0;
+        $('t-' + k).textContent = by[k] || 0;
+    });
+    $('cCompanies').textContent = s.companies || 0;
+    $('footnote').textContent = s.documents
+        ? `${s.documents} document${s.documents === 1 ? '' : 's'} · ${(s.sections || 0).toLocaleString()} pages and slides read · ${size(s.bytes || 0)} stored`
+        : '';
     if (s.configured === false || s.enabled === false) {
         $('flash').innerHTML = `<div class="flash bad">${s.configured === false
             ? 'No database is attached, so documents cannot be kept. Set DATABASE_URL on the service.'
@@ -189,50 +275,120 @@ function stats(s) {
     }
 }
 
+function setShelf(next) {
+    shelf = next;
+    history.replaceState(null, '', '#' + shelf);
+    document.querySelectorAll('.kind').forEach(b => b.classList.toggle('on', b.dataset.shelf === shelf));
+    document.querySelectorAll('.tab').forEach(b => {
+        b.classList.toggle('on', b.dataset.shelf === shelf);
+        b.setAttribute('aria-selected', b.dataset.shelf === shelf);
+    });
+    $('companyCap').textContent = ASK[shelf][0];
+    $('competitor').placeholder = ASK[shelf][1];
+    $('dropShelf').textContent = SHELVES[shelf].toLowerCase();
+    fillFilter();
+    draw();
+}
+
 async function load() {
     const data = await fetch('/api/documents').then(r => r.json());
     docs = data.documents || [];
     stats(data.stats);
-    const select = $('filter'), chosen = select.value;
-    const names = [...new Set(docs.map(d => d.competitor).filter(Boolean))].sort();
-    select.innerHTML = '<option value="">Every rival</option>'
-        + names.map(n => `<option${n === chosen ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    fillFilter();
     draw();
+}
+
+// The company filter lists only companies on the open shelf.
+function fillFilter() {
+    const select = $('filter'), chosen = select.value;
+    const names = [...new Set(docs.filter(d => d.category === shelf)
+        .map(d => d.competitor).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    select.innerHTML = '<option value="">Every company</option>'
+        + names.map(n => `<option${n === chosen ? ' selected' : ''}>${esc(n)}</option>`).join('');
 }
 
 function draw() {
     const pick = $('filter').value;
-    const shown = docs.filter(d => !pick || d.competitor === pick);
+    const shown = docs.filter(d => d.category === shelf && (!pick || d.competitor === pick));
     if (!shown.length) {
-        $('shelf').innerHTML = `<div class="void"><span class="h5">Nothing kept yet</span>
-            <p>Upload the documents the team already has. They stay here for good and
-            any card can be built from them.</p></div>`;
+        $('shelf').innerHTML = `<div class="void"><span class="h5">No ${esc(SHELVES[shelf].toLowerCase())} yet</span>
+            <p>Choose ${esc(SHELVES[shelf])} above, name the company and drop the files in.
+            They stay here for good and any card can be built from them.</p></div>`;
         return;
     }
-    $('shelf').innerHTML = '<div class="shelf">' + shown.map(d => {
-        const ext = (d.filename.split('.').pop() || '').toLowerCase();
-        const unit = (ext === 'pptx' ? 'slide' : ext === 'pdf' ? 'page' : 'section')
-            + (d.sections === 1 ? '' : 's');
-        return `<div class="doc">
-            <div class="type ${esc(ext)}">${esc(ext.toUpperCase())}</div>
-            <div>
-                <div class="name">${esc(d.filename)}</div>
-                <div class="tags">
-                    ${d.competitor ? `<span>${esc(d.competitor)}</span>` : ''}
-                    ${d.ia_product ? `<span>${esc(d.ia_product)}</span>` : ''}
-                    <span class="mute">${d.sections} ${unit}</span>
-                    <span class="mute">${size(d.size_bytes)}</span>
-                    ${d.author ? `<span class="mute">${esc(d.author)}</span>` : ''}
+    // One card per company, named companies first, then anything untagged.
+    const groups = new Map();
+    shown.forEach(d => {
+        const key = (d.competitor || '').trim();
+        if (!groups.has(key.toLowerCase())) groups.set(key.toLowerCase(), { name: key, files: [] });
+        groups.get(key.toLowerCase()).files.push(d);
+    });
+    const ordered = [...groups.values()].sort((a, b) =>
+        (!a.name) - (!b.name) || a.name.localeCompare(b.name));
+    $('shelf').innerHTML = '<div class="shelf">' + ordered.map(g => {
+        const pages = g.files.reduce((n, d) => n + d.sections, 0);
+        return `<article class="co${g.name ? '' : ' unnamed'}">
+            <div class="top">
+                <div class="mono">${g.name ? esc(initials(g.name)) : '?'}</div>
+                <div>
+                    <div class="cname">${g.name ? esc(g.name) : 'Company not named'}</div>
+                    <div class="cmeta">${g.files.length} document${g.files.length === 1 ? '' : 's'} · ${pagesWord(pages)}</div>
                 </div>
+            </div>
+            <ul>${g.files.map(fileRow).join('')}</ul>
+        </article>`;
+    }).join('') + '</div>';
+    $('shelf').querySelectorAll('.rm').forEach(b => b.onclick = () => remove(b));
+    $('shelf').querySelectorAll('.mv').forEach(b => b.onclick = () => openEdit(b));
+}
+
+function fileRow(d) {
+    const ext = (d.filename.split('.').pop() || '').toLowerCase();
+    const unit = (ext === 'pptx' ? 'slide' : ext === 'pdf' ? 'page' : 'section')
+        + (d.sections === 1 ? '' : 's');
+    const when = d.created_at ? new Date(d.created_at).toLocaleDateString(undefined,
+        { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    const bits = [d.ia_product ? `<b>${esc(d.ia_product)}</b>` : '', `${d.sections} ${unit}`,
+        size(d.size_bytes), when, d.author ? esc(d.author) : ''].filter(Boolean);
+    return `<li data-id="${d.id}">
+        <div class="file">
+            <span class="type ${esc(ext)}">${esc(ext.toUpperCase())}</span>
+            <div>
+                <div class="fname">${esc(d.filename)}</div>
+                <div class="fsub">${bits.join(' · ')}</div>
                 ${d.note ? `<div class="note">${esc(d.note)}</div>` : ''}
                 <div class="acts">
                     <a href="/api/documents/${d.id}/download">Download</a>
-                    <button data-id="${d.id}" data-name="${esc(d.filename)}">Remove</button>
+                    <button class="mv" data-id="${d.id}">${d.competitor ? 'Move' : 'Name the company'}</button>
+                    <button class="rm" data-id="${d.id}" data-name="${esc(d.filename)}">Remove</button>
                 </div>
             </div>
-        </div>`;
-    }).join('') + '</div>';
-    $('shelf').querySelectorAll('button[data-id]').forEach(b => b.onclick = () => remove(b));
+        </div>
+    </li>`;
+}
+
+// Re-file a document: rename the company it covers or move it to another shelf.
+function openEdit(button) {
+    const d = docs.find(x => String(x.id) === button.dataset.id);
+    const host = button.closest('li').querySelector('.file > div');
+    if (host.querySelector('.edit')) { host.querySelector('.edit').remove(); return; }
+    const form = document.createElement('div');
+    form.className = 'edit';
+    form.innerHTML = `<input class="field" list="rivals" value="${esc(d.competitor)}" placeholder="Company">
+        <select class="field">${Object.entries(SHELVES).map(([k, v]) =>
+            `<option value="${k}"${k === d.category ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>
+        <button class="btn btn-primary">Save</button>`;
+    host.appendChild(form);
+    form.querySelector('input').focus();
+    form.querySelector('button').onclick = async () => {
+        const res = await fetch('/api/documents/' + d.id, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ competitor: form.querySelector('input').value.trim(),
+                                   category: form.querySelector('select').value }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { $('flash').innerHTML = `<div class="flash bad">${esc(data.error || 'It could not be moved.')}</div>`; return; }
+        load();
+    };
 }
 
 async function remove(button) {
@@ -243,18 +399,30 @@ async function remove(button) {
     load();
 }
 
+// Every file is filed under a company, so ask for it before the picker opens.
+function companyNamed() {
+    if ($('competitor').value.trim()) return true;
+    $('competitor').classList.add('missing');
+    $('competitor').focus();
+    $('flash').innerHTML = '<div class="flash bad">Name the company these files are about first, so they are filed under it.</div>';
+    return false;
+}
+
 async function upload(fileList) {
     const files = [...fileList];
     if (!files.length) return;
     $('flash').innerHTML = '';
+    if (!companyNamed()) return;
+    const company = $('competitor').value.trim(), into = shelf;
     for (const file of files) {
         const row = document.createElement('div');
         row.className = 'fl go';
-        row.innerHTML = `<b>${esc(file.name)}</b><div class="where">Reading and storing</div>`;
+        row.innerHTML = `<b>${esc(company)}</b> · ${esc(file.name)}<div class="where">Reading and storing in ${esc(SHELVES[into])}</div>`;
         $('files').prepend(row);
         const body = new FormData();
         body.append('file', file);
-        body.append('competitor', $('competitor').value.trim());
+        body.append('category', into);
+        body.append('competitor', company);
         body.append('ia_product', $('product').value);
         body.append('note', $('note').value.trim());
         try {
@@ -264,8 +432,8 @@ async function upload(fileList) {
             if (kept) {
                 row.className = 'fl ok';
                 row.querySelector('.where').textContent = kept.duplicate
-                    ? 'Already in the database, kept once'
-                    : `Kept. ${kept.sections} pages or sections read, ${size(kept.size_bytes)}`;
+                    ? `Already in the database under ${kept.competitor || 'an unnamed company'}, ${kept.category_label}. Kept once.`
+                    : `Kept in ${kept.category_label}. ${kept.sections} pages or sections read, ${size(kept.size_bytes)}`;
             } else {
                 row.className = 'fl bad';
                 row.querySelector('.where').textContent =
@@ -287,7 +455,11 @@ $('picker').onchange = e => { upload(e.target.files); e.target.value = ''; };
 ['dragleave', 'drop'].forEach(n => drop.addEventListener(n, e => {
     e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => upload(e.dataTransfer.files));
+drop.addEventListener('click', e => { if (!companyNamed()) e.preventDefault(); });
+$('competitor').addEventListener('input', () => $('competitor').classList.remove('missing'));
+document.querySelectorAll('.kind, .tab').forEach(b => b.onclick = () => setShelf(b.dataset.shelf));
 $('filter').onchange = draw;
+setShelf(shelf);
 load();
 </script>
 </body>

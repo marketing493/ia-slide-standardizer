@@ -521,8 +521,13 @@ def _database_prompt(competitor: str, product: str, notes: str,
         '6. Where %(prod)s is stronger, weaker or level, with the evidence.\n\n'
         'Cite every fact with the bracketed label it came from, exactly as given, '
         'for example [Admin guide.pdf, page 88]. A document written by the rival '
-        'is their claim, not a fact: say whose document it is. End with a SOURCES '
-        'list of every document and page you used.'
+        'is their claim, not a fact: say whose document it is. Each document opens '
+        'with the company it covers and its shelf. Battlecards are earlier cards '
+        'the team made: reuse what still holds, and flag anything that may have '
+        'dated. Client lists name who buys from whom: use a named client only as '
+        'the list states it, and never put our own client names on a card unless '
+        'the instructions ask for them. End with a SOURCES list of every document '
+        'and page you used.'
         % {'comp': competitor, 'prod': product or 'the platform'})
     if web:
         ask += ('\n\nYou may also search the public web for anything the documents '
@@ -856,7 +861,9 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
                 return
             corpus, left_out = vault.corpus(chosen)
             yield {'type': 'database',
-                   'documents': [row['filename'] for row in chosen],
+                   'documents': ['%s: %s' % (row['competitor'], row['filename'])
+                                 if row.get('competitor') else row['filename']
+                                 for row in chosen],
                    'left_out': left_out[:12], 'left_out_count': len(left_out)}
         yield {'type': 'status', 'step': 'research',
                'message': ('Reading %s in the Existing Intelligence Database' % (
@@ -1069,10 +1076,10 @@ def _database_index() -> str:
              'their names and tags, not their contents. To use their contents, the '
              'seller picks Build from Existing Intelligence Database on the Build page.']
     for row in rows[:200]:
-        tags = ', '.join(t for t in (row['competitor'], row['ia_product']) if t)
-        lines.append('- %s%s, %d sections' % (row['filename'],
-                                               ' (%s)' % tags if tags else '',
-                                               row['sections']))
+        tags = ', '.join(t for t in (row.get('category_label', ''), row['ia_product']) if t)
+        lines.append('- %s: %s%s, %d sections' % (
+            row['competitor'] or 'Company not named', row['filename'],
+            ' (%s)' % tags if tags else '', row['sections']))
     return '\n'.join(lines)
 
 

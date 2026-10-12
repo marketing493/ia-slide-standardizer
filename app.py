@@ -1194,14 +1194,17 @@ def database_page():
                            competitors=[entry['name'] for entry in presets['competitors']],
                            products=[entry['name'] for entry in presets['products']],
                            formats=sorted(battlecard_docs.EXTENSIONS),
-                           max_upload_mb=battlecard_docs.MAX_BYTES // 1048576)
+                           max_upload_mb=battlecard_docs.MAX_BYTES // 1048576,
+                           shelves=battlecard_vault.CATEGORIES)
 
 
 @app.route('/api/documents')
 def documents_list():
     return jsonify({'stats': battlecard_vault.stats(),
+                    'categories': battlecard_vault.CATEGORIES,
                     'documents': battlecard_vault.listing(
-                        request.args.get('competitor', '').strip())})
+                        request.args.get('competitor', '').strip(),
+                        request.args.get('category', '').strip())})
 
 
 @app.route('/api/documents', methods=['POST'])
@@ -1213,11 +1216,12 @@ def documents_upload():
     competitor = request.form.get('competitor', '').strip()
     product = request.form.get('ia_product', '').strip()
     note = request.form.get('note', '').strip()
+    shelf = request.form.get('category', '')
     kept, failed = [], []
     for upload in uploads:
         try:
             kept.append(battlecard_vault.add(upload.filename, upload.read(), competitor,
-                                             product, note, _author()))
+                                             product, note, _author(), shelf))
         except battlecard_vault.Unavailable as exc:
             return jsonify({'error': str(exc), 'kept': kept}), 503
         except battlecard_docs.Unreadable as exc:
@@ -1242,6 +1246,19 @@ def documents_download(doc_id):
     filename, data, mimetype = found
     return send_file(io.BytesIO(data), mimetype=mimetype, as_attachment=True,
                      download_name=filename)
+
+
+@app.route('/api/documents/<int:doc_id>', methods=['PATCH'])
+def documents_retag(doc_id):
+    """Move a document to another shelf, or name the company it covers."""
+    data = request.get_json(silent=True) or {}
+    try:
+        found = battlecard_vault.retag(doc_id, data.get('competitor'), data.get('category'))
+    except battlecard_vault.Unavailable as exc:
+        return jsonify({'error': str(exc)}), 503
+    if not found:
+        return jsonify({'error': 'That document is not in the database.'}), 404
+    return jsonify({'document': found, 'stats': battlecard_vault.stats()})
 
 
 @app.route('/api/documents/<int:doc_id>', methods=['DELETE'])

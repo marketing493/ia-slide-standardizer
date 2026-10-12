@@ -420,8 +420,17 @@ the other formats the reader takes, up to 25MB each, several at once.
 - **Stored for good.** Each file goes into Postgres with its original bytes and the text
   read out of it, page by page or slide by slide. It can be downloaded again at any time.
   The same file uploaded twice is kept once. Remove hides a file rather than deleting it.
-- **Tagged.** A rival and a product tag decide which files are ticked first when somebody
-  builds a card on that rival.
+- **Three shelves.** Every file sits on one shelf: **Battlecards** (cards the team already
+  made), **Competitor intelligence** (datasheets, analyst notes, win loss reports) or
+  **Client lists** (who buys from whom, ours or a rival's). Each shelf is its own tab with
+  its own count. Files kept before the shelves existed sit on Competitor intelligence.
+- **Filed by company.** The upload asks which company the files cover, and the page shows
+  one card per company, led by its name, with the files listed underneath. **Move** renames
+  the company or moves a file to another shelf. The company tag decides which files are
+  ticked first when somebody builds a card on that rival; a rival's own client list is
+  ticked with the rest of their material, while our client list is left for the seller to
+  choose. The build tells Claude which company and shelf each document belongs to, and
+  never puts our own client names on a card unless the instructions ask for them.
 - **Build from it.** On the Build page, question 04 asks where the card should come from.
   **Build from Existing Intelligence Database** reads the chosen documents instead of
   searching the web, and takes free text instructions for the deck ("lead with time to

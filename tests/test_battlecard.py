@@ -2879,6 +2879,66 @@ def test_the_corpus_labels_every_passage_and_names_what_did_not_fit():
     assert left_out == ['Guide.pdf, page 3', 'Guide.pdf, page 4', 'Guide.pdf, page 5']
 
 
+def test_the_corpus_says_which_company_and_shelf_each_document_covers():
+    from battlecards import vault
+    docs = [{'filename': 'Accounts.xlsx.pdf', 'competitor': 'o9 Solutions',
+             'category': 'client', 'segments': [{'label': 'page 1', 'text': 'Acme Retail'}]}]
+    text, _ = vault.corpus(docs)
+    assert text.startswith('DOCUMENT Accounts.xlsx.pdf: o9 Solutions, Client lists')
+    assert '[Accounts.xlsx.pdf, page 1]\nAcme Retail' in text
+
+
+def test_an_unknown_shelf_falls_back_to_competitor_intelligence():
+    from battlecards import vault
+    assert list(vault.CATEGORIES) == ['battlecard', 'competitor', 'client']
+    assert vault.category('client') == 'client'
+    assert vault.category(' Battlecard ') == 'battlecard'
+    assert vault.category('') == vault.category('nonsense') == 'competitor'
+
+
+def test_the_upload_route_files_the_document_on_its_shelf(client, monkeypatch):
+    import app as flask_app
+    seen = {}
+
+    def fake_add(filename, data, competitor, product, note, author, shelf):
+        seen.update(filename=filename, competitor=competitor, shelf=shelf)
+        return {'id': 1, 'filename': filename, 'competitor': competitor,
+                'category': shelf, 'sections': 1, 'size_bytes': len(data)}
+
+    monkeypatch.setattr(flask_app.battlecard_vault, 'add', fake_add)
+    monkeypatch.setattr(flask_app.battlecard_vault, 'stats', lambda: {})
+    response = client.post('/api/documents', data={
+        'file': (io.BytesIO(LONG.encode()), 'clients.txt'), 'competitor': 'o9 Solutions',
+        'category': 'client'}, content_type='multipart/form-data')
+    assert response.status_code == 200
+    assert seen == {'filename': 'clients.txt', 'competitor': 'o9 Solutions', 'shelf': 'client'}
+
+
+def test_a_document_can_be_moved_to_another_shelf(client, monkeypatch):
+    import app as flask_app
+    seen = {}
+
+    def fake_retag(doc_id, competitor=None, shelf=None):
+        seen.update(doc_id=doc_id, competitor=competitor, shelf=shelf)
+        return {'id': doc_id, 'competitor': competitor, 'category': shelf}
+
+    monkeypatch.setattr(flask_app.battlecard_vault, 'retag', fake_retag)
+    monkeypatch.setattr(flask_app.battlecard_vault, 'stats', lambda: {})
+    response = client.patch('/api/documents/9', json={'competitor': 'Blue Yonder',
+                                                      'category': 'battlecard'})
+    assert response.status_code == 200
+    assert seen == {'doc_id': 9, 'competitor': 'Blue Yonder', 'shelf': 'battlecard'}
+    monkeypatch.setattr(flask_app.battlecard_vault, 'retag', lambda *a, **k: None)
+    assert client.patch('/api/documents/9', json={}).status_code == 404
+
+
+def test_the_database_page_has_three_shelves_led_by_company(client):
+    page = client.get('/database').data.decode()
+    for label in ('Battlecards', 'Competitor intelligence', 'Client lists'):
+        assert label in page
+    assert 'Companies covered' in page and 'Company not named' in page
+
+
 def test_documents_need_a_database(client, monkeypatch):
     from battlecards import store
     monkeypatch.setattr(store, 'database_url', lambda: '')
@@ -2973,9 +3033,9 @@ def test_ask_ai_knows_what_the_database_holds(monkeypatch):
     from battlecards import ai, vault
     monkeypatch.setattr(vault, 'listing', lambda competitor='': [{
         'filename': 'Win loss Q3.pdf', 'competitor': 'o9 Solutions', 'ia_product': '',
-        'sections': 12}])
+        'sections': 12, 'category_label': 'Competitor intelligence'}])
     block = ai._database_index()
-    assert 'Win loss Q3.pdf (o9 Solutions), 12 sections' in block
+    assert '- o9 Solutions: Win loss Q3.pdf (Competitor intelligence), 12 sections' in block
 
 
 def test_the_build_page_offers_the_database_and_ask_ai(client):

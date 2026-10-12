@@ -48,7 +48,24 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS documents_created_idx ON documents (created_at DESC);
 CREATE INDEX IF NOT EXISTS documents_competitor_idx ON documents (lower(competitor));
 CREATE INDEX IF NOT EXISTS documents_sha_idx ON documents (sha256);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'competitor';
 """
+
+# The three shelves of the database, in the order the page shows them. Rows
+# kept before shelves existed were all rival material, so they land on
+# competitor intelligence until somebody moves them.
+CATEGORIES = {
+    'battlecard': 'Battlecards',
+    'competitor': 'Competitor intelligence',
+    'client': 'Client lists',
+}
+DEFAULT_CATEGORY = 'competitor'
+
+
+def category(value) -> str:
+    """A known shelf key for whatever the form sent, the default otherwise."""
+    value = (value or '').strip().lower()
+    return value if value in CATEGORIES else DEFAULT_CATEGORY
 
 # The text a build can read in one go. About 150,000 tokens: room for several
 # long documents, and a ceiling on what one build can spend on input. Anything
@@ -56,7 +73,7 @@ CREATE INDEX IF NOT EXISTS documents_sha_idx ON documents (sha256);
 BUILD_CHAR_BUDGET = 600_000
 
 _SUMMARY = ('id, filename, kind, competitor, ia_product, note, author, size_bytes, '
-            'chars, jsonb_array_length(segments), created_at')
+            'chars, jsonb_array_length(segments), created_at, category')
 
 
 class Unavailable(Exception):
@@ -104,13 +121,15 @@ def _summary(row) -> dict:
         'size_bytes': int(row[7] or 0), 'chars': int(row[8] or 0),
         'sections': int(row[9] or 0),
         'created_at': row[10].isoformat() if row[10] else None,
+        'category': row[11] or DEFAULT_CATEGORY,
+        'category_label': CATEGORIES.get(row[11] or DEFAULT_CATEGORY, ''),
     }
 
 
 # ─── Writing ────────────────────────────────────────────────────────────────────
 
 def add(filename: str, data: bytes, competitor: str = '', product: str = '',
-        note: str = '', author: str = '') -> dict:
+        note: str = '', author: str = '', shelf: str = DEFAULT_CATEGORY) -> dict:
     """Read and keep one document. Returns its summary.
 
     Raises docs.Unreadable with a sentence worth showing when the file cannot
@@ -130,16 +149,39 @@ def add(filename: str, data: bytes, competitor: str = '', product: str = '',
                 return dict(_summary(existing), duplicate=True)
             cur.execute(
                 'INSERT INTO documents (filename, kind, competitor, ia_product, note, '
-                'author, size_bytes, chars, sha256, segments, content) '
-                'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                'author, size_bytes, chars, sha256, segments, content, category) '
+                'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
                 'RETURNING ' + _SUMMARY,
                 (document['filename'], document['kind'], (competitor or '').strip(),
                  (product or '').strip(), (note or '').strip()[:500], author or '',
                  len(data), document['chars'], digest,
-                 json.dumps(document['segments']), data))
+                 json.dumps(document['segments']), data, category(shelf)))
             row = cur.fetchone()
         conn.commit()
     return _summary(row)
+
+
+def retag(doc_id, competitor=None, shelf=None) -> dict:
+    """Move a kept document to another shelf or company. Returns its summary."""
+    _require()
+    from . import store
+    sets, params = [], []
+    if competitor is not None:
+        sets.append('competitor = %s')
+        params.append(str(competitor).strip()[:200])
+    if shelf is not None:
+        sets.append('category = %s')
+        params.append(category(shelf))
+    with store._connect() as conn:
+        with conn.cursor() as cur:
+            if sets:
+                cur.execute('UPDATE documents SET ' + ', '.join(sets)
+                            + ' WHERE id = %s AND NOT retired', tuple(params + [int(doc_id)]))
+            cur.execute('SELECT ' + _SUMMARY + ' FROM documents '
+                        'WHERE id = %s AND NOT retired', (int(doc_id),))
+            row = cur.fetchone()
+        conn.commit()
+    return _summary(row) if row else None
 
 
 def retire(doc_id) -> bool:
@@ -155,7 +197,7 @@ def retire(doc_id) -> bool:
 
 # ─── Reading ────────────────────────────────────────────────────────────────────
 
-def listing(competitor: str = '') -> list:
+def listing(competitor: str = '', shelf: str = '') -> list:
     """Every kept document, newest first, without its bytes or text."""
     if not init(attempts=1):
         return []
@@ -165,6 +207,9 @@ def listing(competitor: str = '') -> list:
     if competitor:
         sql += ' AND lower(competitor) = lower(%s)'
         params.append(competitor)
+    if shelf:
+        sql += ' AND category = %s'
+        params.append(category(shelf))
     sql += ' ORDER BY created_at DESC'
     try:
         with store._connect(attempts=1) as conn:
@@ -183,6 +228,9 @@ def stats() -> dict:
         'configured': enabled(),
         'documents': len(rows),
         'rivals': len({row['competitor'].lower() for row in rows if row['competitor']}),
+        'companies': len({row['competitor'].lower() for row in rows if row['competitor']}),
+        'categories': {key: sum(1 for row in rows if row['category'] == key)
+                       for key in CATEGORIES},
         'sections': sum(row['sections'] for row in rows),
         'bytes': sum(row['size_bytes'] for row in rows),
     }
@@ -197,12 +245,13 @@ def texts(doc_ids) -> list:
     from . import store
     with store._connect() as conn:
         with conn.cursor() as cur:
-            cur.execute('SELECT id, filename, competitor, ia_product, segments '
+            cur.execute('SELECT id, filename, competitor, ia_product, segments, category '
                         'FROM documents WHERE NOT retired AND id = ANY(%s)', (ids,))
             found = {row[0]: {'id': row[0], 'filename': row[1], 'competitor': row[2],
                               'ia_product': row[3],
                               'segments': row[4] if isinstance(row[4], list)
-                              else json.loads(row[4] or '[]')}
+                              else json.loads(row[4] or '[]'),
+                              'category': row[5] or DEFAULT_CATEGORY}
                      for row in cur.fetchall()}
     return [found[doc_id] for doc_id in ids if doc_id in found]
 
@@ -229,11 +278,19 @@ def corpus(documents: list, budget: int = BUILD_CHAR_BUDGET):
     """The documents as one labelled text, and what did not fit.
 
     Every passage carries its file name and page or slide, so the brief and the
-    card can cite "Admin guide.pdf, page 88" rather than "the documents".
+    card can cite "Admin guide.pdf, page 88" rather than "the documents". Each
+    document opens with a line saying which company it covers and which shelf
+    it sits on, so a client list is never read as a rival's datasheet.
     Returns (text, left_out), where left_out names the passages past the budget.
     """
     parts, used, left_out = [], 0, []
     for document in documents:
+        shelf = CATEGORIES.get(document.get('category') or '', '')
+        about = ', '.join(t for t in (document.get('competitor') or '', shelf) if t)
+        if about:
+            heading = 'DOCUMENT %s: %s' % (document['filename'], about)
+            parts.append(heading)
+            used += len(heading)
         for segment in document['segments']:
             block = '[%s, %s]\n%s' % (document['filename'], segment.get('label', ''),
                                       segment.get('text', ''))
