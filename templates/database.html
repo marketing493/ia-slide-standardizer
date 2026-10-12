@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Existing Intelligence Database</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/ia_logo.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,200;0,300;0,400;1,300&family=Inter+Tight:wght@400;500;600&family=Lato:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ia.css') }}">
+    <style>
+        :root { --accent: var(--data); }
+        .hero { padding: 62px 40px 150px; }
+        .hero .wrap { max-width: 1160px; margin: 0 auto; }
+        .hero .eyebrow { color: rgba(255,255,255,.62); }
+        .hero .display { margin-top: 16px; color: var(--white); max-width: 18ch; }
+        .hero .lede { margin-top: 20px; color: rgba(255,255,255,.78); max-width: 580px; }
+        .counts { display: flex; gap: 46px; margin-top: 38px; flex-wrap: wrap; }
+        .count b { display: block; font-family: var(--serif); font-weight: 200; font-size: 52px; line-height: .95; letter-spacing: -2.4px; }
+        .count span { display: block; margin-top: 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; color: rgba(255,255,255,.6); }
+
+        .page { max-width: 1160px; margin: 0 auto; padding: 0 40px 84px; }
+        .console { margin-top: -110px; position: relative; z-index: 10; padding: 34px; }
+        .console h2 { font-family: var(--serif); font-weight: 300; font-size: 30px; letter-spacing: -1px; margin: 0; }
+        .console .sub { color: #5f5f5f; margin-top: 8px; font-size: 15px; max-width: 64ch; line-height: 1.55; }
+
+        .who { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 24px; }
+        .who label { flex: 1; min-width: 210px; }
+        .cap { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; color: var(--gray3); margin-bottom: 7px; }
+
+        .dropzone { display: block; margin-top: 20px; border: 2px dashed var(--gray2); border-radius: var(--r); background: rgba(255,255,255,.55); padding: 44px 28px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+        .dropzone:hover, .dropzone.over { border-color: var(--impact-blue); background: rgba(38,76,215,.05); }
+        .dropzone .big { font-family: var(--serif); font-weight: 300; font-size: 23px; letter-spacing: -.6px; }
+        .dropzone .small { font-size: 13.5px; color: var(--gray3); margin-top: 9px; line-height: 1.55; }
+        .dropzone input { display: none; }
+
+        .files { margin-top: 16px; display: grid; gap: 9px; }
+        .fl { background: var(--white); border: 1px solid var(--gray1); border-left: 3px solid var(--gray2); border-radius: var(--r-xs); padding: 12px 15px; font-size: 14px; }
+        .fl.go { border-left-color: var(--impact-blue); }
+        .fl.ok { border-left-color: #3DD499; }
+        .fl.bad { border-left-color: var(--orange); }
+        .fl b { font-weight: 600; }
+        .fl .where { font-size: 12.5px; color: var(--gray3); margin-top: 5px; line-height: 1.5; }
+        .fl.bad .where { color: #a8490d; }
+
+        .privacy { margin-top: 14px; font-size: 12.5px; color: var(--gray3); line-height: 1.6; max-width: 76ch; }
+        .flash { margin-top: 16px; padding: 14px 16px; border-radius: var(--r-sm); font-size: 14.5px; line-height: 1.55; }
+        .flash.bad { background: rgba(255,111,28,.12); color: #a8490d; }
+        .flash.tell { background: rgba(38,76,215,.08); color: var(--blue-ink); }
+        .flash a { color: inherit; font-weight: 600; }
+
+        /* ── What is kept ─────────────────────────────────────────────────── */
+        .kept { margin-top: 56px; }
+        .kept .head { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+        .kept .head h2 { font-family: var(--serif); font-weight: 300; font-size: 34px; letter-spacing: -1.3px; margin: 0; }
+        .kept .head select { margin-left: auto; flex: 0 0 240px; }
+        .kept .hint { color: #5f5f5f; font-size: 14.5px; margin-top: 8px; max-width: 70ch; line-height: 1.55; }
+        .kept .hint a { color: var(--impact-blue); font-weight: 600; text-decoration: none; }
+        .shelf { margin-top: 22px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+        .doc { background: var(--white); border: 1px solid var(--gray1); border-radius: var(--r-sm); padding: 18px 18px 16px; display: grid; grid-template-columns: 48px 1fr; gap: 14px; box-shadow: var(--lift); }
+        .doc .type { width: 48px; height: 58px; border-radius: 6px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .8px; color: var(--white); background: var(--impact-blue); position: relative; }
+        .doc .type::before { content: ''; position: absolute; top: 0; right: 0; width: 14px; height: 14px; background: linear-gradient(225deg, var(--off-white) 50%, rgba(255,255,255,.35) 50%); border-radius: 0 6px 0 0; }
+        .doc .type.pdf { background: #1C1B1B; }
+        .doc .type.pptx { background: var(--orange); }
+        .doc .name { font-weight: 600; font-size: 15px; line-height: 1.4; word-break: break-word; }
+        .doc .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+        .doc .tags span { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: rgba(38,76,215,.08); color: var(--blue-ink); }
+        .doc .tags span.mute { background: var(--off-white); color: #6a6a6a; font-weight: 500; }
+        .doc .note { font-size: 13px; color: #5f5f5f; margin-top: 8px; line-height: 1.5; }
+        .doc .acts { display: flex; gap: 14px; margin-top: 12px; align-items: center; }
+        .doc .acts a, .doc .acts button { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--impact-blue); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+        .doc .acts button { color: var(--gray3); margin-left: auto; }
+        .doc .acts button:hover { color: var(--orange); }
+
+        .void { margin-top: 26px; background: var(--white); border: 1px dashed var(--gray2); border-radius: var(--r); padding: 56px 34px; text-align: center; }
+        .void p { color: var(--gray3); margin-top: 10px; font-size: 16px; max-width: 52ch; margin-left: auto; margin-right: auto; line-height: 1.55; }
+
+        @media (max-width: 760px) {
+            .hero { padding: 42px 20px 132px; }
+            .page { padding: 0 20px 60px; }
+            .console { padding: 22px; margin-top: -104px; }
+            .counts { gap: 26px; }
+            .count b { font-size: 40px; }
+            .kept .head select { margin-left: 0; flex-basis: 100%; }
+            .shelf { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="masthead">
+    <div class="mark">
+        <img src="{{ url_for('static', filename='images/ia_logo.png') }}" alt="Impact Analytics">
+        <b>Battlecard Builder</b>
+    </div>
+    <nav>
+        <a href="{{ url_for('index') }}">Build</a>
+        <a href="{{ url_for('library_page') }}">Library</a>
+        <a href="{{ url_for('intel_page') }}">Teach</a>
+        <a href="{{ url_for('database_page') }}" class="here"><span class="long">Existing Intelligence </span>Database</a>
+    </nav>
+</header>
+
+<section class="hero blue-field grain grid-lines">
+    <div class="wrap">
+        <p class="eyebrow">Existing intelligence database</p>
+        <h1 class="display">Everything the team already <em>holds</em></h1>
+        <p class="lede">Win loss reports, rival datasheets, analyst notes, old battlecards.
+            Upload them once and they stay here for good, ready to download and ready to
+            build a deck from on the Build page.</p>
+        <div class="counts">
+            <div class="count"><b id="cDocs">0</b><span>Documents kept</span></div>
+            <div class="count"><b id="cRivals">0</b><span>Rivals covered</span></div>
+            <div class="count"><b id="cSections">0</b><span>Pages and slides read</span></div>
+            <div class="count"><b id="cSize">0</b><span>Stored</span></div>
+        </div>
+    </div>
+</section>
+
+<div class="page">
+    <section class="console glass">
+        <h2>Add to the database</h2>
+        <p class="sub">Tag who the files are about so they come up first when somebody builds
+            a card on that rival. Several files at once is fine.</p>
+
+        <div class="who">
+            <label><span class="cap">Who is this about</span>
+                <input class="field" id="competitor" list="rivals" placeholder="o9 Solutions (optional)" autocomplete="off">
+                <datalist id="rivals">
+                    <option value="Impact Analytics">Our own products</option>
+                    {% for name in competitors %}<option value="{{ name }}"></option>{% endfor %}
+                </datalist>
+            </label>
+            <label><span class="cap">Which of our products</span>
+                <select class="field" id="product">
+                    <option value="">Any product</option>
+                    {% for name in products %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+                </select>
+            </label>
+            <label style="flex-basis:100%"><span class="cap">Note (optional)</span>
+                <input class="field" id="note" maxlength="500" placeholder="From the Q3 bake off. Their own deck, shared by the buyer.">
+            </label>
+        </div>
+
+        <label class="dropzone" id="drop">
+            <input type="file" id="picker" multiple accept="{{ formats | join(',') }}">
+            <div class="big">Drop the documents here</div>
+            <div class="small">{{ formats | join('  ') }} · up to {{ max_upload_mb }}MB each</div>
+        </label>
+        <div class="files" id="files"></div>
+        <div id="flash"></div>
+        <p class="privacy">Files are stored in the team's database with their original
+            bytes, so anyone signed in to the builder can download them again. Building a
+            deck from them sends their text to the Anthropic API. Upload what you are
+            allowed to share, and take the same care you would with any competitor material.</p>
+    </section>
+
+    <section class="kept">
+        <div class="head">
+            <h2>In the database</h2>
+            <select class="field" id="filter"><option value="">Every rival</option></select>
+        </div>
+        <p class="hint">To make a deck from these, open <a href="{{ url_for('index') }}">Build</a>
+            and choose <b>Build from Existing Intelligence Database</b>.</p>
+        <div id="shelf"></div>
+    </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let docs = [];
+
+const size = bytes => bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + 'MB'
+    : bytes >= 1024 ? Math.round(bytes / 1024) + 'KB' : bytes + 'B';
+
+function stats(s) {
+    s = s || {};
+    $('cDocs').textContent = s.documents || 0;
+    $('cRivals').textContent = s.rivals || 0;
+    $('cSections').textContent = (s.sections || 0).toLocaleString();
+    $('cSize').textContent = size(s.bytes || 0);
+    if (s.configured === false || s.enabled === false) {
+        $('flash').innerHTML = `<div class="flash bad">${s.configured === false
+            ? 'No database is attached, so documents cannot be kept. Set DATABASE_URL on the service.'
+            : 'The database is not reachable right now. Refresh in a moment.'}</div>`;
+    }
+}
+
+async function load() {
+    const data = await fetch('/api/documents').then(r => r.json());
+    docs = data.documents || [];
+    stats(data.stats);
+    const select = $('filter'), chosen = select.value;
+    const names = [...new Set(docs.map(d => d.competitor).filter(Boolean))].sort();
+    select.innerHTML = '<option value="">Every rival</option>'
+        + names.map(n => `<option${n === chosen ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    draw();
+}
+
+function draw() {
+    const pick = $('filter').value;
+    const shown = docs.filter(d => !pick || d.competitor === pick);
+    if (!shown.length) {
+        $('shelf').innerHTML = `<div class="void"><span class="h5">Nothing kept yet</span>
+            <p>Upload the documents the team already has. They stay here for good and
+            any card can be built from them.</p></div>`;
+        return;
+    }
+    $('shelf').innerHTML = '<div class="shelf">' + shown.map(d => {
+        const ext = (d.filename.split('.').pop() || '').toLowerCase();
+        const unit = (ext === 'pptx' ? 'slide' : ext === 'pdf' ? 'page' : 'section')
+            + (d.sections === 1 ? '' : 's');
+        return `<div class="doc">
+            <div class="type ${esc(ext)}">${esc(ext.toUpperCase())}</div>
+            <div>
+                <div class="name">${esc(d.filename)}</div>
+                <div class="tags">
+                    ${d.competitor ? `<span>${esc(d.competitor)}</span>` : ''}
+                    ${d.ia_product ? `<span>${esc(d.ia_product)}</span>` : ''}
+                    <span class="mute">${d.sections} ${unit}</span>
+                    <span class="mute">${size(d.size_bytes)}</span>
+                    ${d.author ? `<span class="mute">${esc(d.author)}</span>` : ''}
+                </div>
+                ${d.note ? `<div class="note">${esc(d.note)}</div>` : ''}
+                <div class="acts">
+                    <a href="/api/documents/${d.id}/download">Download</a>
+                    <button data-id="${d.id}" data-name="${esc(d.filename)}">Remove</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('') + '</div>';
+    $('shelf').querySelectorAll('button[data-id]').forEach(b => b.onclick = () => remove(b));
+}
+
+async function remove(button) {
+    if (!confirm('Remove ' + button.dataset.name + ' from the database?')) return;
+    const res = await fetch('/api/documents/' + button.dataset.id, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { $('flash').innerHTML = `<div class="flash bad">${esc(data.error || 'It could not be removed.')}</div>`; return; }
+    load();
+}
+
+async function upload(fileList) {
+    const files = [...fileList];
+    if (!files.length) return;
+    $('flash').innerHTML = '';
+    for (const file of files) {
+        const row = document.createElement('div');
+        row.className = 'fl go';
+        row.innerHTML = `<b>${esc(file.name)}</b><div class="where">Reading and storing</div>`;
+        $('files').prepend(row);
+        const body = new FormData();
+        body.append('file', file);
+        body.append('competitor', $('competitor').value.trim());
+        body.append('ia_product', $('product').value);
+        body.append('note', $('note').value.trim());
+        try {
+            const res = await fetch('/api/documents', { method: 'POST', body });
+            const data = await res.json().catch(() => ({}));
+            const kept = (data.kept || [])[0], failed = (data.failed || [])[0];
+            if (kept) {
+                row.className = 'fl ok';
+                row.querySelector('.where').textContent = kept.duplicate
+                    ? 'Already in the database, kept once'
+                    : `Kept. ${kept.sections} pages or sections read, ${size(kept.size_bytes)}`;
+            } else {
+                row.className = 'fl bad';
+                row.querySelector('.where').textContent =
+                    (failed && failed.error) || data.error || 'That file could not be kept.';
+            }
+            if (data.stats) stats(data.stats);
+        } catch (err) {
+            row.className = 'fl bad';
+            row.querySelector('.where').textContent = String(err);
+        }
+    }
+    load();
+}
+
+const drop = $('drop');
+$('picker').onchange = e => { upload(e.target.files); e.target.value = ''; };
+['dragenter', 'dragover'].forEach(n => drop.addEventListener(n, e => {
+    e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(n => drop.addEventListener(n, e => {
+    e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => upload(e.dataTransfer.files));
+$('filter').onchange = draw;
+load();
+</script>
+</body>
+</html>

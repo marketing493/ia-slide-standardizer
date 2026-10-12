@@ -24,7 +24,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import attributesmart, docs, intel, library
+from . import attributesmart, docs, intel, library, vault
 from .brand import PRODUCT_SOLUTIONS, SOLUTION_LABELS
 from .schema import DEPTHS, DEFAULT_DEPTH, RATING_VALUES
 
@@ -488,6 +488,52 @@ def _research_prompt(competitor: str, product: str, notes: str) -> str:
     return ask
 
 
+INSTRUCTIONS_RULE = ('Follow them for emphasis, order, angle and tone. They never '
+                     'override the honesty rules or the brand rules: if an '
+                     'instruction asks for a claim the evidence does not support, '
+                     'leave the claim out and say so in the notes.')
+
+
+def _instructions_block(instructions: str) -> str:
+    instructions = (instructions or '').strip()
+    if not instructions:
+        return ''
+    return ('\n\nHOW THE SELLER WANTS THIS DECK\n%s\n%s'
+            % (instructions[:4000], INSTRUCTIONS_RULE))
+
+
+def _database_prompt(competitor: str, product: str, notes: str,
+                     instructions: str = '', web: bool = False) -> str:
+    """The brief, written from the team's own documents rather than a web search."""
+    ask = (
+        'Write the research brief for a battlecard on %(comp)s against Impact '
+        'Analytics %(prod)s, using the EXISTING INTELLIGENCE DATABASE above: '
+        'documents the team already holds.\n\n'
+        'Cover, in this order:\n'
+        '1. Company facts the documents give: headquarters, founding, headcount, '
+        'ownership, funding, target segment, go to market, deployment.\n'
+        '2. What %(comp)s sells and how it works, in the detail the documents give.\n'
+        '3. Anything dated: launches, releases, wins, changes.\n'
+        '4. What they genuinely do well.\n'
+        '5. For each capability a buyer would compare, whether the documents say '
+        'they have it, partially have it, or say nothing. Write "not in the '
+        'documents" where that is the truth. Never infer a gap from silence.\n'
+        '6. Where %(prod)s is stronger, weaker or level, with the evidence.\n\n'
+        'Cite every fact with the bracketed label it came from, exactly as given, '
+        'for example [Admin guide.pdf, page 88]. A document written by the rival '
+        'is their claim, not a fact: say whose document it is. End with a SOURCES '
+        'list of every document and page you used.'
+        % {'comp': competitor, 'prod': product or 'the platform'})
+    if web:
+        ask += ('\n\nYou may also search the public web for anything the documents '
+                'do not cover, company facts first. Cite web facts with their URL.')
+    else:
+        ask += '\n\nDo not invent anything the documents do not say.'
+    if notes:
+        ask += '\n\nExtra context from the seller, treat as unverified input:\n%s' % notes
+    return ask + _instructions_block(instructions)
+
+
 def _research(client, competitor: str, product: str, notes: str,
               mode: dict = None) -> str:
     """Phase one: search the public record and write a sourced brief.
@@ -516,7 +562,8 @@ def _research(client, competitor: str, product: str, notes: str,
 
 
 def _structure(client, competitor: str, product: str, preset: dict,
-               research: str, notes: str, mode: dict = None, cost: dict = None) -> dict:
+               research: str, notes: str, mode: dict = None, cost: dict = None,
+               instructions: str = '') -> dict:
     """Phase two: turn the brief into a card payload matching the schema."""
     mode = mode or STANDARD
     caps = preset.get('caps') or {}
@@ -553,6 +600,7 @@ def _structure(client, competitor: str, product: str, preset: dict,
            'focus': (preset['focus'] + '\n\n') if preset.get('focus') else ''})
     if notes:
         ask += '\n\nSELLER NOTES\n%s' % notes
+    ask += _instructions_block(instructions)
     ask += ('\n\nReturn one JSON object and nothing else. No prose before or after, '
             'no code fence. It must match this shape exactly, with every key '
             'present:\n%s' % _shape_contract())
@@ -750,7 +798,8 @@ def _curated_block(competitor: str, product: str) -> str:
 # ─── Streaming generation, for the browser ──────────────────────────────────────
 
 def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
-                    notes: str = '', economy: bool = False):
+                    notes: str = '', economy: bool = False, source: str = 'web',
+                    document_ids=None, instructions: str = '', web: bool = False):
     """Generate a card while yielding progress events.
 
     Research and structuring each take a while, and a silent connection gets cut
@@ -790,8 +839,44 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         yield {'type': 'taught', 'count': len(taught), 'ours': len(ours),
                'product': product,
                'curated': bool(curated_for(competitor, product))}
+        from_database = source == 'database'
+        corpus = ''
+        if from_database:
+            # Built from the team's own documents. The chosen files, or every
+            # file tagged with this rival when none were picked.
+            ids = list(document_ids or [])
+            if not ids:
+                ids = [row['id'] for row in vault.listing(competitor)]
+            chosen = vault.texts(ids)
+            if not chosen:
+                yield {'type': 'error',
+                       'message': 'No documents were chosen, and none in the Existing '
+                                  'Intelligence Database are tagged %s. Pick the '
+                                  'documents to build from.' % competitor}
+                return
+            corpus, left_out = vault.corpus(chosen)
+            yield {'type': 'database',
+                   'documents': [row['filename'] for row in chosen],
+                   'left_out': left_out[:12], 'left_out_count': len(left_out)}
         yield {'type': 'status', 'step': 'research',
-               'message': 'Searching the public record for %s' % competitor}
+               'message': ('Reading %s in the Existing Intelligence Database' % (
+                   'the chosen documents') if from_database
+                           else 'Searching the public record for %s' % competitor)}
+        if from_database:
+            # The documents go first and are cached, so a second build from the
+            # same set within a few minutes reads them at the cache rate.
+            content = [{'type': 'text', 'cache_control': {'type': 'ephemeral'},
+                        'text': 'EXISTING INTELLIGENCE DATABASE\n\n' + corpus},
+                       {'type': 'text', 'text': _database_prompt(
+                           competitor, product, notes, instructions, web)}]
+            tools = [_search_tool(mode['searches'])] if web else []
+        else:
+            content = (_research_prompt(competitor, product, notes)
+                       + _instructions_block(instructions))
+            tools = [_search_tool(mode['searches'])]
+        request = {}
+        if tools:
+            request['tools'] = tools
         # Streamed so the seller watches the brief arrive. If Anthropic is
         # overloaded part way through, the half brief is dropped and the phase
         # starts again after a wait, so the card never rests on a fragment.
@@ -804,9 +889,8 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
                     system=_system_prompt(product, competitor),
                     thinking={'type': 'adaptive'},
                     output_config={'effort': mode['effort']},
-                    tools=[_search_tool(mode['searches'])],
-                    messages=[{'role': 'user',
-                               'content': _research_prompt(competitor, product, notes)}],
+                    messages=[{'role': 'user', 'content': content}],
+                    **request,
                 ) as stream:
                     for chunk in stream.text_stream:
                         chunks.append(chunk)
@@ -838,7 +922,7 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         research = ''.join(chunks).strip()
         searches = searches_used(message.usage)
         yield {'type': 'searches', 'count': searches}
-        if not searches:
+        if not searches and not from_database:
             yield {'type': 'status', 'step': 'research',
                    'message': 'Warning: no web search ran, so every competitor fact '
                               'in this card is unsourced. Check that web search is '
@@ -847,7 +931,7 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
         yield {'type': 'status', 'step': 'structure',
                'message': 'Writing the battlecard'}
         card = _structure(client, competitor, product, preset, research, notes,
-                          mode=mode, cost=cost)
+                          mode=mode, cost=cost, instructions=instructions)
         yield {'type': 'usage', 'cost': dict(cost), 'phase': 'card'}
         card = _merge_curated(card, competitor, product)
         card['meta'] = dict(card.get('meta', {}), **{
@@ -873,8 +957,10 @@ def generate_events(competitor: str, product: str, depth: str = DEFAULT_DEPTH,
 
 CHAT_SYSTEM = """You are the assistant inside the Impact Analytics battlecard builder.
 
-You help a seller understand and improve the card they have open. Keep answers
-short, three sentences where three will do. You know the battlecard sections, the
+You are the seller's Ask AI panel. Help with whatever they ask: a rival, the card
+they have open if there is one, what the team keeps in the Existing Intelligence
+Database, or how to run the next call. Keep answers short, three sentences where
+three will do. You know the battlecard sections, the
 brand writing rules and the honesty rules above.
 
 When the seller asks you to change the card, reply with the wording you propose
@@ -927,6 +1013,9 @@ def chat_stream(history: list, card: dict = None, product: str = ''):
 
     system = _system_prompt(product, competitor)
     system.append({'type': 'text', 'text': CHAT_SYSTEM})
+    shelf = _database_index()
+    if shelf:
+        system.append({'type': 'text', 'text': shelf})
     if card:
         system.append({'type': 'text',
                        'text': 'The card currently open, as JSON:\n%s'
@@ -960,6 +1049,31 @@ def chat_stream(history: list, card: dict = None, product: str = ''):
             if started or wait is None or not is_transient(exc):
                 raise
             time.sleep(wait)
+
+
+def _database_index() -> str:
+    """What the Existing Intelligence Database holds, by name and tag only.
+
+    Enough for the assistant to say what the team has on a rival and to point at
+    building from it. The documents' text is not sent: that would cost the whole
+    corpus on every chat question.
+    """
+    try:
+        rows = vault.listing()
+    except Exception:
+        log.exception('Could not list the document store for chat.')
+        return ''
+    if not rows:
+        return ''
+    lines = ['THE EXISTING INTELLIGENCE DATABASE holds these documents. You know '
+             'their names and tags, not their contents. To use their contents, the '
+             'seller picks Build from Existing Intelligence Database on the Build page.']
+    for row in rows[:200]:
+        tags = ', '.join(t for t in (row['competitor'], row['ia_product']) if t)
+        lines.append('- %s%s, %d sections' % (row['filename'],
+                                               ' (%s)' % tags if tags else '',
+                                               row['sections']))
+    return '\n'.join(lines)
 
 
 def _card_digest(card: dict) -> dict:

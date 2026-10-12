@@ -89,6 +89,34 @@
         .mini .gap { border-color: var(--orange, #FF6F1C); }
         .mini .unk { border-color: var(--gray3); }
 
+        /* ── Where the card comes from ─────────────────────────────────── */
+        .sources { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .src { text-align: left; cursor: pointer; font-family: var(--sans); background: var(--white);
+            border: 1px solid var(--gray1); border-radius: var(--r-sm); padding: 16px 16px 15px;
+            transition: border-color .14s, box-shadow .14s; }
+        .src:hover { border-color: var(--gray2); }
+        .src.on { border-color: var(--impact-blue); box-shadow: 0 0 0 3px rgba(38,76,215,.13); }
+        .src .sn { display: block; font-family: var(--serif); font-size: 18px; letter-spacing: -.3px; }
+        .src .sd { display: block; margin-top: 6px; font-size: 12.5px; color: #6c6c6c; line-height: 1.45; }
+        .dbpanel { margin-top: 14px; border: 1px solid var(--gray1); border-radius: var(--r-sm);
+            background: rgba(38,76,215,.03); padding: 16px; }
+        .dbpanel .cap { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 1.1px;
+            text-transform: uppercase; color: var(--gray3); margin-bottom: 8px; }
+        .dbpanel .row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .dbpanel .row .cap { margin: 0; }
+        .dbpanel .row button { margin-left: auto; font-family: var(--sans); font-size: 12.5px; font-weight: 600;
+            color: var(--impact-blue); background: none; border: 0; cursor: pointer; padding: 0; }
+        .doclist { max-height: 230px; overflow: auto; display: grid; gap: 6px; }
+        .doclist label { display: flex; gap: 10px; align-items: flex-start; background: var(--white);
+            border: 1px solid var(--gray1); border-radius: var(--r-xs); padding: 9px 11px; font-size: 13.5px; cursor: pointer; }
+        .doclist label input { margin-top: 3px; }
+        .doclist label small { display: block; color: var(--gray3); font-size: 12px; margin-top: 2px; }
+        .doclist .none { font-size: 13.5px; color: #6c6c6c; line-height: 1.5; }
+        .doclist .none a { color: var(--impact-blue); font-weight: 600; }
+        .dbpanel textarea { margin-top: 2px; min-height: 96px; }
+        .dbpanel .webcheck { display: flex; gap: 9px; align-items: flex-start; margin-top: 12px; font-size: 13px; color: #5c5c5c; line-height: 1.45; cursor: pointer; }
+        .dbpanel .webcheck input { margin-top: 3px; }
+
         .accent-line { display: flex; gap: 12px; align-items: flex-start; margin-top: 6px; font-size: 13.5px; color: #5c5c5c; line-height: 1.5; }
         .accent-line .chip { flex: none; width: 15px; height: 15px; border-radius: 4px; margin-top: 2px; background: var(--accent); transition: background .3s; }
 
@@ -174,7 +202,7 @@
             .console > .glass { padding: 26px 22px; }
             .step { grid-template-columns: 42px minmax(0,1fr); gap: 4px 12px; }
             .step .numeral { font-size: 32px; }
-            .depths, .tiles { grid-template-columns: 1fr; }
+            .depths, .tiles, .sources { grid-template-columns: 1fr; }
             .depth.h2h { grid-template-columns: 1fr; }
             .mini { width: auto; }
         }
@@ -193,6 +221,7 @@
         <a href="{{ url_for('index') }}" class="here">Build</a>
         <a href="{{ url_for('library_page') }}">Library</a>
         <a href="{{ url_for('intel_page') }}">Teach</a>
+        <a href="{{ url_for('database_page') }}"><span class="long">Existing Intelligence </span>Database</a>
     </nav>
 </header>
 
@@ -239,6 +268,34 @@
                 <div class="ctl"><div class="depths" id="depths"></div></div>
             </div>
 
+            <div class="step">
+                <span class="numeral">04</span>
+                <span class="h5 ask">Where should the card come from?</span>
+                <p class="why">Search the public record, or build from the documents the team already holds.</p>
+                <div class="ctl">
+                    <div class="sources" id="sources">
+                        <button class="src on" data-source="web">
+                            <span class="sn">Research the public web</span>
+                            <span class="sd">Claude searches the web and writes the card, with every claim sourced.</span>
+                        </button>
+                        <button class="src" data-source="database">
+                            <span class="sn">Build from Existing Intelligence Database</span>
+                            <span class="sd">Built from the documents kept on the database page, with your instructions.</span>
+                        </button>
+                    </div>
+                    <div class="dbpanel" id="dbPanel" hidden>
+                        <div class="row"><span class="cap">Documents to build from</span>
+                            <button id="dbAll" type="button">Select all</button></div>
+                        <div class="doclist" id="docList"></div>
+                        <span class="cap" style="margin-top:14px">How do you want this deck?</span>
+                        <textarea class="field" id="instructions" placeholder="Lead with integration and time to value. Keep pricing off the slides. Write it for a CFO, short and plain. Make the head to head the strongest section."></textarea>
+                        <label class="webcheck"><input type="checkbox" id="dbWeb">
+                            <span>Also search the public web for anything the documents do not cover.
+                            Off by default, so the card rests on your documents alone.</span></label>
+                    </div>
+                </div>
+            </div>
+
             <details class="extra">
                 <summary>Add context Claude cannot find on its own</summary>
                 <textarea class="field" id="notes" style="margin-top:12px"
@@ -278,15 +335,15 @@
 
 <aside>
     <div class="rail-top dot-field">
-        <span class="h3">Ask about this card</span>
-        <p class="caption" id="chatSub">Claude knows whatever you have open.</p>
+        <span class="h3">Ask AI</span>
+        <p class="caption" id="chatSub">Ask anything: a rival, the card, the documents in the database, how to sell.</p>
     </div>
     <div class="msgs" id="msgs">
         <div class="prompts" id="prompts"></div>
     </div>
     <div class="composer">
         <label class="sr-only" for="chatIn">Message</label>
-        <textarea class="field" id="chatIn" rows="1" placeholder="Ask anything about the card"></textarea>
+        <textarea class="field" id="chatIn" rows="1" placeholder="Ask anything"></textarea>
         <button id="chatSend" title="Send">&#8593;</button>
     </div>
 </aside>
@@ -301,6 +358,45 @@ const ACCENT = {
 
 let presets = { competitors: [], products: [], product_solutions: {} };
 let depths = [], depth = 'standard';
+let source = 'web', dbDocs = [];
+
+// The documents kept in the Existing Intelligence Database. Those tagged with
+// the rival in step one are ticked, so the usual case needs no clicks.
+async function loadDocs() {
+    try {
+        const data = await fetch('/api/documents').then(r => r.json());
+        dbDocs = data.documents || [];
+    } catch (err) { dbDocs = []; }
+    drawDocs();
+}
+
+function drawDocs() {
+    const rival = $('competitor').value.trim().toLowerCase();
+    if (!dbDocs.length) {
+        $('docList').innerHTML = `<div class="none">Nothing is in the database yet.
+            <a href="/database">Upload documents</a> first, then come back.</div>`;
+        return;
+    }
+    const ticked = new Set([...$('docList').querySelectorAll('input:checked')].map(i => i.value));
+    const fresh = !ticked.size;
+    const ordered = [...dbDocs].sort((a, b) =>
+        ((b.competitor || '').toLowerCase() === rival) - ((a.competitor || '').toLowerCase() === rival));
+    $('docList').innerHTML = ordered.map(d => {
+        const on = fresh ? (rival && (d.competitor || '').toLowerCase() === rival)
+                         : ticked.has(String(d.id));
+        const tags = [d.competitor, d.ia_product].filter(Boolean).join(' · ');
+        return `<label><input type="checkbox" value="${d.id}"${on ? ' checked' : ''}>
+            <span>${esc(d.filename)}<small>${esc(tags || 'Untagged')} · ${d.sections} section${d.sections === 1 ? '' : 's'}</small></span></label>`;
+    }).join('');
+}
+
+function setSource(next) {
+    source = next;
+    $('sources').querySelectorAll('.src').forEach(b => b.classList.toggle('on', b.dataset.source === source));
+    $('dbPanel').hidden = source !== 'database';
+    if (source === 'database') loadDocs();
+    $('goLabel').textContent = source === 'database' ? 'Build from the database' : 'Research and build';
+}
 
 // A miniature of the head to head matrix, drawn the way the deck draws it: an
 // edge bar per row and a Harvey ball per vendor.
@@ -351,6 +447,15 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     $('product').onchange = paintAccent;
     paintAccent(); renderPrompts();
 
+    $('sources').querySelectorAll('.src').forEach(b => b.onclick = () => setSource(b.dataset.source));
+    $('dbAll').onclick = () => {
+        const boxes = [...$('docList').querySelectorAll('input')];
+        const all = boxes.every(b => b.checked);
+        boxes.forEach(b => b.checked = !all);
+        $('dbAll').textContent = all ? 'Select all' : 'Clear';
+    };
+    $('competitor').addEventListener('change', () => { if (source === 'database') drawDocs(); });
+
     if (!AI_ENABLED) {
         say('assistant', 'Claude is not connected on this deployment, so I cannot research a '
             + 'competitor or answer questions yet. Someone needs to set ANTHROPIC_API_KEY on '
@@ -384,13 +489,19 @@ async function generate() {
     $('resultPanel').hidden = true;
     $('progressPanel').hidden = false;
     $('feed').hidden = false; $('feed').textContent = '';
-    track([['Searching the public record', 'now'], ['Writing the battlecard', 'wait']]);
+    track([[readLabel(false), 'now'], ['Writing the battlecard', 'wait']]);
     try {
         const res = await fetch('/api/battlecard/generate', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ competitor, ia_product: $('product').value, depth,
                                    notes: $('notes').value.trim(),
-                                   economy: $('economy').checked })
+                                   economy: $('economy').checked,
+                                   source,
+                                   document_ids: source === 'database'
+                                       ? [...$('docList').querySelectorAll('input:checked')].map(i => +i.value)
+                                       : [],
+                                   instructions: source === 'database' ? $('instructions').value.trim() : '',
+                                   web: source === 'database' && $('dbWeb').checked })
         });
         await readSSE(res, onEvent);
     } catch (err) { fail(String(err)); }
@@ -400,8 +511,16 @@ async function generate() {
 function onEvent(ev) {
     if (ev.type === 'status') {
         track(ev.step === 'research'
-            ? [['Searching the public record', 'now'], ['Writing the battlecard', 'wait']]
-            : [['Searched the public record', 'done'], ['Writing the battlecard', 'now']]);
+            ? [[readLabel(false), 'now'], ['Writing the battlecard', 'wait']]
+            : [[readLabel(true), 'done'], ['Writing the battlecard', 'now']]);
+    } else if (ev.type === 'database') {
+        let text = 'Reading ' + ev.documents.length + ' document'
+            + (ev.documents.length === 1 ? '' : 's') + ' from the Existing Intelligence Database:\n'
+            + ev.documents.map(n => '  ' + n).join('\n') + '\n\n';
+        if (ev.left_out_count) text += ev.left_out_count + ' passages did not fit in one build and '
+            + 'were left out, starting with ' + ev.left_out.slice(0, 3).join('; ')
+            + '. Choose fewer documents to include them.\n\n';
+        $('feed').textContent = text;
     } else if (ev.type === 'retry') {
         // Anthropic was overloaded part way through. The half brief is dropped
         // and the research restarts, so the feed starts clean too.
@@ -428,7 +547,7 @@ function onEvent(ev) {
         searches = ev.count;
         showSpend();
     } else if (ev.type === 'card') {
-        track([['Searched the public record', 'done'], ['Wrote the battlecard', 'done']]);
+        track([[readLabel(true), 'done'], ['Wrote the battlecard', 'done']]);
         card = ev.card; build(ev.curated);
     } else if (ev.type === 'error') { fail(ev.message); }
 }
@@ -450,6 +569,12 @@ async function headToHead() {
         window.location = data.download_url;
     } catch (err) { fail(String(err)); }
     finally { btn.disabled = false; btn.textContent = label; }
+}
+
+function readLabel(done) {
+    return source === 'database'
+        ? (done ? 'Read the database documents' : 'Reading the database documents')
+        : (done ? 'Searched the public record' : 'Searching the public record');
 }
 
 async function build(curated) {
@@ -575,8 +700,8 @@ function renderPrompts() {
     const asks = card
         ? ['Which capabilities are unverified?', 'Sharpen the win theme',
            'What should I ask on the first call?', 'Write a cold email from this card']
-        : ['What makes a good battlecard?', 'Which rivals matter for AttributeSmart?',
-           'What is the difference between the three lengths?'];
+        : ['What is in the Existing Intelligence Database?', 'What makes a good battlecard?',
+           'Which rivals matter for ' + ($('product').value || 'AttributeSmart') + '?'];
     $('prompts').innerHTML = asks.map(q => `<button>${esc(q)}</button>`).join('');
     $('prompts').querySelectorAll('button').forEach(b => b.onclick = () => {
         $('chatIn').value = b.textContent; sendChat();
@@ -619,7 +744,7 @@ async function sendChat() {
     try {
         const res = await fetch('/api/battlecard/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: history, card })
+            body: JSON.stringify({ messages: history, card, product: $('product').value })
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));

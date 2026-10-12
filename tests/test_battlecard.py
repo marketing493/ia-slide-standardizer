@@ -534,15 +534,15 @@ def test_standardizer_still_reachable(client):
     assert 'Standardize Now' in client.get('/standardizer').data.decode()
 
 
-@pytest.mark.parametrize('route', ['/', '/library', '/intel'])
-def test_the_nav_is_the_three_battlecard_pages(client, route):
+@pytest.mark.parametrize('route', ['/', '/library', '/intel', '/database'])
+def test_the_nav_is_the_four_battlecard_pages(client, route):
     """The standardizer is not part of this tool, so it is not in the nav."""
     page = client.get(route).data.decode()
     nav = page[page.index('<nav>'):page.index('</nav>')]
     assert 'Standardizer' not in nav
-    for label in ('Build', 'Library', 'Teach'):
+    for label in ('Build', 'Library', 'Teach', 'Existing Intelligence ', 'Database'):
         assert label in nav, label
-    assert nav.count('<a ') == 3
+    assert nav.count('<a ') == 4
 
 
 def test_old_battlecard_link_still_works(client):
@@ -569,7 +569,7 @@ def test_chat_route_refuses_without_a_credential(client, monkeypatch):
 def test_generate_route_streams_events(client, monkeypatch):
     import app as flask_app
 
-    def fake(competitor, product, depth, notes, economy=False):
+    def fake(competitor, product, depth, notes, economy=False, **options):
         yield {'type': 'status', 'step': 'research', 'message': 'searching'}
         yield {'type': 'card', 'card': {'meta': {'competitor': competitor}},
                'curated': False, 'research': 'brief', 'cost': {}}
@@ -781,7 +781,7 @@ def test_generate_route_passes_the_economy_flag(client, monkeypatch):
     import app as flask_app
     seen = {}
 
-    def fake(competitor, product, depth, notes, economy=False):
+    def fake(competitor, product, depth, notes, economy=False, **options):
         seen['economy'] = economy
         yield {'type': 'card', 'card': {'meta': {'competitor': competitor}},
                'curated': False, 'research': '', 'cost': {}}
@@ -2325,8 +2325,10 @@ def test_the_diagnose_route_confirms_the_tables_when_it_works(client, monkeypatc
     monkeypatch.setattr(flask_app.battlecard_store, 'init', lambda force=False: True)
     monkeypatch.setattr(flask_app.battlecard_intel, 'init',
                         lambda force=False, attempts=None: True)
+    monkeypatch.setattr(flask_app.battlecard_vault, 'init',
+                        lambda force=False, attempts=None: True)
     body = client.get('/api/intel/diagnose').get_json()
-    assert body['tables'] == {'library': True, 'intel': True}
+    assert body['tables'] == {'library': True, 'intel': True, 'documents': True}
     assert 'hint' not in body
 
 
@@ -2864,3 +2866,120 @@ def test_the_claim_count_is_not_capped_at_300(monkeypatch):
 def test_the_health_check_says_which_commit_is_live(client, monkeypatch):
     monkeypatch.setenv('RENDER_GIT_COMMIT', '1741f6ed28bdeac1bd4e306cdad472a542336639')
     assert client.get('/healthz').get_json()['version'] == '1741f6e'
+
+
+# ── the Existing Intelligence Database ──────────────────────────────────────
+
+def test_the_corpus_labels_every_passage_and_names_what_did_not_fit():
+    from battlecards import vault
+    docs = [{'filename': 'Guide.pdf', 'segments': [
+        {'label': 'page %d' % n, 'text': 'x' * 400} for n in range(1, 6)]}]
+    text, left_out = vault.corpus(docs, budget=1000)
+    assert '[Guide.pdf, page 1]' in text and '[Guide.pdf, page 2]' in text
+    assert left_out == ['Guide.pdf, page 3', 'Guide.pdf, page 4', 'Guide.pdf, page 5']
+
+
+def test_documents_need_a_database(client, monkeypatch):
+    from battlecards import store
+    monkeypatch.setattr(store, 'database_url', lambda: '')
+    response = client.post('/api/documents', data={
+        'file': (io.BytesIO(LONG.encode()), 'note.txt')}, content_type='multipart/form-data')
+    assert response.status_code == 503
+    assert 'DATABASE_URL' in response.get_json()['error']
+
+
+def _recording_client(replies):
+    """A client that records each request and answers from `replies` in turn."""
+    requests = []
+
+    class Stream:
+        def __init__(self, request):
+            requests.append(request)
+            self.text = replies[min(len(requests), len(replies)) - 1]
+            self.text_stream = iter([self.text])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return type('M', (), {
+                'stop_reason': 'end_turn', 'usage': _SearchUsage(0),
+                'content': [type('B', (), {'type': 'text', 'text': self.text})()]})()
+
+    client = type('C', (), {'messages': type('M', (), {
+        'stream': staticmethod(lambda **kw: Stream(kw))})()})()
+    return client, requests
+
+
+def test_a_card_can_be_built_from_the_database(monkeypatch):
+    from battlecards import ai, vault
+    card_json = json.dumps({key: [] for key in (
+        'their_strengths', 'their_weaknesses', 'our_advantages', 'comparison',
+        'objections', 'landmines', 'discovery', 'proof_points', 'dos', 'donts',
+        'next_steps', 'resources', 'how_to_use')})
+    client, requests = _recording_client(['A brief citing [Notes.docx, page 2].', card_json])
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: client)
+    monkeypatch.setattr(vault, 'texts', lambda ids: [{
+        'id': 7, 'filename': 'Notes.docx', 'competitor': 'o9 Solutions', 'ia_product': '',
+        'segments': [{'label': 'page 2', 'text': 'They set option counts by hand.'}]}])
+    events = list(ai.generate_events(
+        'o9 Solutions', 'AssortSmart', 'standard', source='database', document_ids=[7],
+        instructions='Lead with time to value. Write it for a CFO.'))
+    kinds = [event['type'] for event in events]
+    assert 'database' in kinds and kinds[-1] == 'card', kinds
+    research, structure = requests[0], requests[1]
+    assert 'tools' not in research, 'a database build does not search the web'
+    first = research['messages'][0]['content'][0]
+    assert first['cache_control'] == {'type': 'ephemeral'}
+    assert '[Notes.docx, page 2]' in first['text']
+    assert 'Write it for a CFO' in research['messages'][0]['content'][1]['text']
+    assert 'Write it for a CFO' in structure['messages'][0]['content']
+    assert 'never' in structure['messages'][0]['content'].lower()
+
+
+def test_a_database_build_with_nothing_chosen_says_so(monkeypatch):
+    from battlecards import ai, vault
+    client, _ = _recording_client(['unused'])
+    monkeypatch.setattr(ai, 'available', lambda: True)
+    monkeypatch.setattr(ai, '_client', lambda: client)
+    monkeypatch.setattr(vault, 'listing', lambda competitor='': [])
+    monkeypatch.setattr(vault, 'texts', lambda ids: [])
+    events = list(ai.generate_events('Acme', 'AssortSmart', source='database'))
+    assert events[-1]['type'] == 'error'
+    assert 'Pick the documents' in events[-1]['message']
+
+
+def test_the_generate_route_passes_the_database_options(client, monkeypatch):
+    import app as flask_app
+    seen = {}
+
+    def fake(competitor, product, depth, notes, **options):
+        seen.update(options)
+        yield {'type': 'done'}
+
+    monkeypatch.setattr(flask_app.battlecard_ai, 'generate_events', fake)
+    client.post('/api/battlecard/generate', json={
+        'competitor': 'o9 Solutions', 'ia_product': 'AssortSmart', 'source': 'database',
+        'document_ids': [3, 4], 'instructions': 'Keep it short.', 'web': True}).data
+    assert seen['source'] == 'database' and seen['document_ids'] == [3, 4]
+    assert seen['instructions'] == 'Keep it short.' and seen['web'] is True
+
+
+def test_ask_ai_knows_what_the_database_holds(monkeypatch):
+    from battlecards import ai, vault
+    monkeypatch.setattr(vault, 'listing', lambda competitor='': [{
+        'filename': 'Win loss Q3.pdf', 'competitor': 'o9 Solutions', 'ia_product': '',
+        'sections': 12}])
+    block = ai._database_index()
+    assert 'Win loss Q3.pdf (o9 Solutions), 12 sections' in block
+
+
+def test_the_build_page_offers_the_database_and_ask_ai(client):
+    page = client.get('/').data.decode()
+    assert 'Build from Existing Intelligence Database' in page
+    assert 'How do you want this deck?' in page
+    assert '>Ask AI<' in page and 'Ask about this card' not in page

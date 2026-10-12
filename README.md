@@ -411,6 +411,32 @@ believed survives.
 If the intel store fails, generation carries on without it. A card matters more than the
 extra context.
 
+## Existing Intelligence Database
+
+A tab beside Teach where the team keeps the documents it already holds: win loss
+reports, rival datasheets, analyst notes, old battlecards. Upload DOCX, PDF, PPTX and
+the other formats the reader takes, up to 25MB each, several at once.
+
+- **Stored for good.** Each file goes into Postgres with its original bytes and the text
+  read out of it, page by page or slide by slide. It can be downloaded again at any time.
+  The same file uploaded twice is kept once. Remove hides a file rather than deleting it.
+- **Tagged.** A rival and a product tag decide which files are ticked first when somebody
+  builds a card on that rival.
+- **Build from it.** On the Build page, question 04 asks where the card should come from.
+  **Build from Existing Intelligence Database** reads the chosen documents instead of
+  searching the web, and takes free text instructions for the deck ("lead with time to
+  value, write it for a CFO"). Instructions shape emphasis, order and tone; they never
+  override the honesty or brand rules. Every fact in the brief cites its file and page.
+  A tick box adds a web search for anything the documents do not cover.
+- **Cost.** One build reads up to about 600,000 characters of documents (roughly 150,000
+  tokens). The documents are cached, so a second build from the same set within a few
+  minutes reads them at the cache rate. Anything past the limit is named in the progress
+  feed rather than silently dropped.
+- **Storage.** The free Neon tier holds 0.5GB, and the page shows how much is stored.
+- **Ask AI.** The chat panel on the Build page knows which documents the database holds,
+  by name and tag, so it can say what the team has on a rival. It does not read their
+  text on every question, which would bill the whole corpus each time.
+
 ## The shared library
 
 `battlecards/store.py` keeps every generated card in Postgres: the card JSON, the research
@@ -552,6 +578,7 @@ battlecards/
   library.py     IA portfolio, capability and question banks, competitor presets, scaffold
   typeset.py     measuring, fitting, trimming, citations out of body copy
   builder.py     slide builders, pagination, the deck assembler
+  vault.py       the Existing Intelligence Database: kept documents and their text
   compat.py      Google Slides compatibility audit
   ai.py          Claude Opus 5.5 research, structured card generation, chat assistant
   store.py       the shared Postgres library, optional

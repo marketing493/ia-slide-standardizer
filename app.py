@@ -22,6 +22,7 @@ from battlecards import schema as battlecard_schema
 from battlecards import store as battlecard_store
 from battlecards import intel as battlecard_intel
 from battlecards import docs as battlecard_docs
+from battlecards import vault as battlecard_vault
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
@@ -42,6 +43,7 @@ battlecard_auth.install(app)
 # rather than by this.
 battlecard_store.init(attempts=1)
 battlecard_intel.init(attempts=1)
+battlecard_vault.init(attempts=1)
 
 
 @app.route('/healthz')
@@ -986,7 +988,11 @@ def battlecard_generate():
     events = battlecard_ai.generate_events(
         data.get('competitor', ''), data.get('ia_product', ''),
         data.get('depth', battlecard_schema.DEFAULT_DEPTH), data.get('notes', ''),
-        economy=bool(data.get('economy')))
+        economy=bool(data.get('economy')),
+        source='database' if data.get('source') == 'database' else 'web',
+        document_ids=data.get('document_ids') or [],
+        instructions=data.get('instructions', ''),
+        web=bool(data.get('web')))
     return app.response_class(_sse(events), mimetype='text/event-stream',
                               headers={'Cache-Control': 'no-cache',
                                        'X-Accel-Buffering': 'no'})
@@ -998,7 +1004,9 @@ def battlecard_chat():
     data = request.get_json(silent=True) or {}
     history = data.get('messages') or []
     card = data.get('card') or None
-    product = (card or {}).get('meta', {}).get('ia_product', '')
+    # The open card's product, or the one picked on the page when no card is open.
+    product = ((card or {}).get('meta', {}).get('ia_product', '')
+               or str(data.get('product') or '').strip())
 
     if not battlecard_ai.available():
         return jsonify({'error': 'No Anthropic credential is configured. Set '
@@ -1176,6 +1184,77 @@ def intel_retire(entry_id):
     return jsonify({'retired': entry_id})
 
 
+# ─── Existing Intelligence Database ─────────────────────────────────────────────
+
+@app.route('/database')
+def database_page():
+    """Documents the team keeps for good, and builds decks from."""
+    presets = battlecard_service.presets()
+    return render_template('database.html',
+                           competitors=[entry['name'] for entry in presets['competitors']],
+                           products=[entry['name'] for entry in presets['products']],
+                           formats=sorted(battlecard_docs.EXTENSIONS),
+                           max_upload_mb=battlecard_docs.MAX_BYTES // 1048576)
+
+
+@app.route('/api/documents')
+def documents_list():
+    return jsonify({'stats': battlecard_vault.stats(),
+                    'documents': battlecard_vault.listing(
+                        request.args.get('competitor', '').strip())})
+
+
+@app.route('/api/documents', methods=['POST'])
+def documents_upload():
+    """Keep one or more uploaded files. Each is read once and stored for good."""
+    uploads = [item for item in request.files.getlist('file') if item and item.filename]
+    if not uploads:
+        return jsonify({'error': 'Choose a file to keep.'}), 400
+    competitor = request.form.get('competitor', '').strip()
+    product = request.form.get('ia_product', '').strip()
+    note = request.form.get('note', '').strip()
+    kept, failed = [], []
+    for upload in uploads:
+        try:
+            kept.append(battlecard_vault.add(upload.filename, upload.read(), competitor,
+                                             product, note, _author()))
+        except battlecard_vault.Unavailable as exc:
+            return jsonify({'error': str(exc), 'kept': kept}), 503
+        except battlecard_docs.Unreadable as exc:
+            failed.append({'filename': upload.filename, 'error': str(exc)})
+        except Exception as exc:
+            app.logger.exception('keeping a document failed')
+            failed.append({'filename': upload.filename,
+                           'error': 'It could not be kept: %s' % exc})
+    status = 200 if kept or not failed else 400
+    return jsonify({'kept': kept, 'failed': failed,
+                    'stats': battlecard_vault.stats()}), status
+
+
+@app.route('/api/documents/<int:doc_id>/download')
+def documents_download(doc_id):
+    try:
+        found = battlecard_vault.download(doc_id)
+    except battlecard_vault.Unavailable as exc:
+        return jsonify({'error': str(exc)}), 503
+    if not found:
+        return jsonify({'error': 'That document is not in the database.'}), 404
+    filename, data, mimetype = found
+    return send_file(io.BytesIO(data), mimetype=mimetype, as_attachment=True,
+                     download_name=filename)
+
+
+@app.route('/api/documents/<int:doc_id>', methods=['DELETE'])
+def documents_remove(doc_id):
+    try:
+        removed = battlecard_vault.retire(doc_id)
+    except battlecard_vault.Unavailable as exc:
+        return jsonify({'error': str(exc)}), 503
+    if not removed:
+        return jsonify({'error': 'That document is not in the database.'}), 404
+    return jsonify({'ok': True, 'stats': battlecard_vault.stats()})
+
+
 @app.route('/api/intel/upload', methods=['POST'])
 def intel_upload():
     """Read an uploaded document and stream out the claims it proposes.
@@ -1228,7 +1307,8 @@ def intel_diagnose():
     state = battlecard_store.describe()
     if state.get('ok'):
         state['tables'] = {'library': battlecard_store.init(),
-                           'intel': battlecard_intel.init()}
+                           'intel': battlecard_intel.init(),
+                           'documents': battlecard_vault.init()}
     else:
         state['hint'] = (
             'Set DATABASE_URL on the service.' if not state.get('configured') else

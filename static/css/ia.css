@@ -313,6 +313,7 @@ textarea.field { min-height: 88px; resize: vertical; line-height: 1.55; font-siz
     .masthead .mark b { font-size: 15px; white-space: nowrap; }
     .masthead nav { gap: 14px; }
     .masthead nav a { font-size: 13px; white-space: nowrap; }
+    .masthead nav .long { display: none; }
     .status-dot .label { display: none; }
 }
 @media (max-width: 460px) {
